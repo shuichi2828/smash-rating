@@ -816,9 +816,7 @@ export default function App() {
                   <Sword className="h-8 w-8" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold uppercase tracking-[0.25em] text-blue-600">Offline Smash Rating</p>
-                  <h1 className="text-3xl font-black tracking-tight text-slate-950 md:text-5xl">Smash Growth Rating</h1>
-                  <p className="mt-2 text-sm font-medium text-slate-500 md:text-base">Supabase同期対応。友達のスマホでも同じデータを見られます。</p>
+                  <h1 className="text-3xl font-black tracking-tight text-slate-950 md:text-5xl">IGS Smash Rating</h1>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2 rounded-3xl border border-blue-100 bg-blue-50/70 p-3 text-center">
@@ -1402,9 +1400,8 @@ function Stats({ data, ranking, refreshData, saving }) {
           <Spec text="キャラ登録：1人5体まで" />
           <Spec text="削除したプレイヤーは復元可能" />
           <Spec text="2on2：チーム平均レートで計算" />
-          <Spec text="勝利：Elo変動に+10を加算" />
+          <Spec text="勝利：レートがプラス" />
           <Spec text="敗北：必ずマイナス" />
-          <Spec text="1試合の合計増減：必ず+5以上になるように補正" />
           <Spec text="2-0勝利：2勝制のみ変動1.1倍" />
           <Spec text="3連勝以上：勝者だけ連勝ボーナス" />
           <Spec text="ガチマッチ：1on1で両者1700超えなら変動1.2倍" />
