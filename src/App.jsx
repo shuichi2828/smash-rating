@@ -98,6 +98,7 @@ function createRating(playerId, characterName) {
     matches: 0,
     wins: 0,
     losses: 0,
+    winStreak: 0,
     highestRating: INITIAL_RATING
   };
 }
@@ -105,9 +106,12 @@ function createRating(playerId, characterName) {
 function createInitialData() {
   const players = [
     { id: uid(), name: "しゅー", createdAt: new Date().toISOString(), deletedAt: null },
+    { id: uid(), name: "友人A", createdAt: new Date().toISOString(), deletedAt: null },
+    { id: uid(), name: "友人B", createdAt: new Date().toISOString(), deletedAt: null },
+    { id: uid(), name: "友人C", createdAt: new Date().toISOString(), deletedAt: null }
   ];
 
-  const defaultCharacters = ["ガノンドロフ"];
+  const defaultCharacters = ["マリオ", "ルイージ", "クラウド", "サムス"];
   const ratings = players.map((player, index) => createRating(player.id, defaultCharacters[index]));
 
   return { players, ratings, matches: [] };
@@ -136,6 +140,7 @@ function appRatingFromDb(row) {
     matches: row.matches,
     wins: row.wins,
     losses: row.losses,
+    winStreak: row.win_streak || 0,
     highestRating: row.highest_rating
   };
 }
@@ -195,6 +200,7 @@ function dbRatingFromApp(rating) {
     matches: rating.matches,
     wins: rating.wins,
     losses: rating.losses,
+    win_streak: rating.winStreak || 0,
     highest_rating: rating.highestRating
   };
 }
@@ -285,6 +291,7 @@ async function syncAllDataToSupabase(data) {
 function expectedScore(ratingA, ratingB) {
   return 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
 }
+
 function getK(matches) {
   if (matches <= 10) return 48;
   if (matches <= 30) return 32;
@@ -337,6 +344,16 @@ function getTierBarColor(rating) {
     D: "bg-slate-400"
   };
   return styles[tier];
+}
+
+function getWinRateText(wins, matches) {
+  if (!matches) return "0.0%";
+  return `${((wins / matches) * 100).toFixed(1)}%`;
+}
+
+function getStreakBonusMultiplier(streak) {
+  if (streak < 3) return 1;
+  return 1 + streak * 0.05;
 }
 
 function getBestRatingForPlayer(data, playerId) {
@@ -392,7 +409,7 @@ function ChangeBadge({ change }) {
 }
 
 function scoreMultiplier(scoreWinner, scoreLoser) {
-  if (scoreWinner === 2 && scoreLoser === 0) return 1.5;
+  if (scoreWinner === 2 && scoreLoser === 0) return 1.1;
   return 1.0;
 }
 
@@ -415,6 +432,7 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
     ratingsMap.set(r.key, { ...r });
     return { ...m, ratingRecord: { ...r } };
   });
+
   const fullB = teamB.map(m => {
     const r = getOrCreateRating(Array.from(ratingsMap.values()), m.playerId, m.characterName);
     ratingsMap.set(r.key, { ...r });
@@ -432,17 +450,39 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
   const ruleFactor = rule === "single" ? 0.5 : 1;
   const maxAbsChange = mode === "2v2" ? 50 : 100;
 
+  const isGachiMatch =
+    mode === "1v1" &&
+    fullA[0]?.ratingRecord.rating > 1700 &&
+    fullB[0]?.ratingRecord.rating > 1700;
+
+  const gachiFactor = isGachiMatch ? 1.2 : 1;
+
   function apply(member, team, won, expected) {
     const before = member.ratingRecord.rating;
+    const currentStreak = member.ratingRecord.winStreak || 0;
+    const nextStreak = won ? currentStreak + 1 : 0;
     const k = getK(member.ratingRecord.matches);
     const baseAbs = Math.abs(k * ((won ? 1 : 0) - expected) * mult);
 
     let change;
+
     if (won) {
-      change = roundChange((baseAbs * RATE_INTENSITY_MULTIPLIER + WIN_BONUS) * ruleFactor);
+      const streakBonus = getStreakBonusMultiplier(nextStreak);
+      change = roundChange(
+        (baseAbs * RATE_INTENSITY_MULTIPLIER + WIN_BONUS) *
+          ruleFactor *
+          gachiFactor *
+          streakBonus
+      );
       change = Math.max(1, change);
     } else {
-      change = -roundChange(baseAbs * RATE_INTENSITY_MULTIPLIER * LOSS_FACTOR * ruleFactor);
+      change = -roundChange(
+        baseAbs *
+          RATE_INTENSITY_MULTIPLIER *
+          LOSS_FACTOR *
+          ruleFactor *
+          gachiFactor
+      );
       change = Math.min(-1, change);
     }
 
@@ -455,6 +495,8 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
       characterName: member.characterName,
       ratingBefore: before,
       ratingChange: change,
+      winStreakBefore: currentStreak,
+      winStreakAfter: nextStreak,
       won
     });
   }
@@ -463,6 +505,7 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
   fullB.forEach(m => apply(m, "B", !aWon, expB));
 
   let totalChange = rawMembers.reduce((sum, member) => sum + member.ratingChange, 0);
+
   if (totalChange < MIN_TOTAL_CHANGE) {
     let needed = MIN_TOTAL_CHANGE - totalChange;
     const winners = rawMembers.filter(member => member.won);
@@ -500,7 +543,7 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
     ratingAfter: member.ratingBefore + member.ratingChange
   }));
 
-  return { avgA, avgB, expectedA: expA, expectedB: expB, members };
+  return { avgA, avgB, expectedA: expA, expectedB: expB, isGachiMatch, members };
 }
 
 function applyMatch(data, form) {
@@ -516,6 +559,7 @@ function applyMatch(data, form) {
       matches: current.matches + 1,
       wins: current.wins + (member.won ? 1 : 0),
       losses: current.losses + (member.won ? 0 : 1),
+      winStreak: member.winStreakAfter,
       highestRating: Math.max(current.highestRating, member.ratingAfter)
     };
     newRatings.set(key, updated);
@@ -530,6 +574,7 @@ function applyMatch(data, form) {
     scoreA: form.scoreA,
     scoreB: form.scoreB,
     winnerTeam: form.winnerTeam,
+    isGachiMatch: calculation.isGachiMatch,
     members: calculation.members,
     avgA: calculation.avgA,
     avgB: calculation.avgB,
@@ -546,6 +591,7 @@ function resetRatingStats(rating) {
     matches: 0,
     wins: 0,
     losses: 0,
+    winStreak: 0,
     highestRating: INITIAL_RATING
   };
 }
@@ -609,9 +655,18 @@ function PlayerName({ players, id }) {
 
 function SetLabel({ data, rating }) {
   const player = data.players.find(p => p.id === rating.playerId);
+  const streak = rating.winStreak || 0;
+
   return (
     <div className="min-w-0">
-      <div className="truncate text-base"><NameTag name={player?.name || "不明"} rating={rating.rating} /></div>
+      {streak > 0 && (
+        <div className="mb-1 inline-flex rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-black text-orange-600">
+          🔥 {streak}連勝中
+        </div>
+      )}
+      <div className="truncate text-base">
+        <NameTag name={player?.name || "不明"} rating={rating.rating} />
+      </div>
       <div className="truncate text-sm font-semibold text-blue-700">{rating.characterName}</div>
     </div>
   );
@@ -714,7 +769,7 @@ export default function App() {
   async function deleteCharacterSet(key) {
     const target = data.ratings.find(r => r.key === key);
     if (!target) return;
-    if (target.matches > 0) return alert("対戦履歴があるセットは削除できません。");
+    if (target.matches > 0) return alert("対戦履歴があるセットは削除できません。過去の試合との整合性を守るためです。");
     if (!confirm("このプレイヤー・キャラセットを削除しますか？")) return;
     const next = { ...data, ratings: data.ratings.filter(r => r.key !== key) };
     await commit(next);
@@ -731,7 +786,9 @@ export default function App() {
       const rs = data.ratings.filter(r => r.playerId === player.id).sort((a, b) => b.rating - a.rating);
       const top3 = rs.slice(0, 3);
       const avg = top3.length ? Math.round(top3.reduce((s, r) => s + r.rating, 0) / top3.length) : INITIAL_RATING;
-      return { player, avg, top3, matches: rs.reduce((s, r) => s + r.matches, 0) };
+      const matches = rs.reduce((s, r) => s + r.matches, 0);
+      const wins = rs.reduce((s, r) => s + r.wins, 0);
+      return { player, avg, top3, matches, wins };
     }).sort((a, b) => b.avg - a.avg);
   }, [data]);
 
@@ -759,8 +816,9 @@ export default function App() {
                   <Sword className="h-8 w-8" />
                 </div>
                 <div>
-                  <h1 className="text-3xl font-black tracking-tight text-slate-950 md:text-5xl">IGS Smash Rating System</h1>
-                  <p className="mt-2 text-sm font-medium text-slate-500 md:text-base">10人以上でのログインは控えてください。</p>
+                  <p className="text-sm font-bold uppercase tracking-[0.25em] text-blue-600">Offline Smash Rating</p>
+                  <h1 className="text-3xl font-black tracking-tight text-slate-950 md:text-5xl">Smash Growth Rating</h1>
+                  <p className="mt-2 text-sm font-medium text-slate-500 md:text-base">Supabase同期対応。友達のスマホでも同じデータを見られます。</p>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2 rounded-3xl border border-blue-100 bg-blue-50/70 p-3 text-center">
@@ -782,9 +840,9 @@ export default function App() {
           {[
             ["match", "試合入力", Plus],
             ["ranking", "ランキング", Trophy],
-            ["players", "プレイヤー登録・一覧", Users],
+            ["players", "プレイヤー", Users],
             ["history", "履歴", History],
-            ["stats", "詳しいルール", BarChart3]
+            ["stats", "概要", BarChart3]
           ].map(([key, label, Icon]) => (
             <button
               key={key}
@@ -887,6 +945,17 @@ function MatchInput({ data, commit, saving }) {
     return { playerId, name: player?.name || "不明", count, limit: dailyLimit };
   });
 
+  const selectedRatingA = data.ratings.find(
+    r => r.key === ratingKey(activeA[0]?.playerId, activeA[0]?.characterName)
+  );
+  const selectedRatingB = data.ratings.find(
+    r => r.key === ratingKey(activeB[0]?.playerId, activeB[0]?.characterName)
+  );
+  const isGachiPreview =
+    mode === "1v1" &&
+    selectedRatingA?.rating > 1700 &&
+    selectedRatingB?.rating > 1700;
+
   useEffect(() => {
     setScore(rule === "single" ? "1-0" : "2-1");
   }, [rule]);
@@ -971,7 +1040,16 @@ function MatchInput({ data, commit, saving }) {
         <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-stretch">
           <TeamCard title="Team A" team="A" members={activeA} updateMember={updateMember} data={data} registeredSets={registeredSets} disabled={inputLocked} active={winnerTeam === "A"} />
           <div className="flex items-center justify-center">
-            <div className="rounded-full border border-blue-200 bg-white px-4 py-2 text-xl font-black text-blue-600 shadow-sm">VS</div>
+            <div
+              className={classNames(
+                "rounded-full border px-4 py-2 text-xl font-black shadow-sm transition",
+                isGachiPreview
+                  ? "border-red-300 bg-red-600 text-white shadow-red-200"
+                  : "border-blue-200 bg-white text-blue-600"
+              )}
+            >
+              {isGachiPreview ? "ガチマッチ VS" : "VS"}
+            </div>
           </div>
           <TeamCard title="Team B" team="B" members={activeB} updateMember={updateMember} data={data} registeredSets={registeredSets} disabled={inputLocked} active={winnerTeam === "B"} />
         </div>
@@ -1092,6 +1170,7 @@ function TeamCard({ title, team, members, updateMember, data, registeredSets, di
 
 function Ranking({ data, ranking, totalRanking }) {
   const maxRating = Math.max(2300, ...ranking.map(r => r.rating), ...totalRanking.map(r => r.avg));
+
   return (
     <div className="space-y-5">
       <AppShellCard>
@@ -1099,7 +1178,7 @@ function Ranking({ data, ranking, totalRanking }) {
           <div>
             <div className="flex items-center gap-2 text-blue-600"><Trophy className="h-5 w-5" /><p className="text-sm font-black uppercase tracking-wider">Ranking Board</p></div>
             <h2 className="mt-1 text-3xl font-black text-slate-950">キャラ別ランキング</h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">バーの長さでレートを確認できます。</p>
+            <p className="mt-1 text-sm font-medium text-slate-500">枠に囲まれたグラフ形式。バーの長さでレート差が見えます。</p>
           </div>
           <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">Tier color enabled</div>
         </div>
@@ -1119,6 +1198,9 @@ function Ranking({ data, ranking, totalRanking }) {
                       <TierBadge rating={r.rating} large />
                       <div className={`text-2xl font-black ${getTierTextColor(r.rating)}`}>{r.rating}</div>
                       <div className="text-xs font-bold text-slate-400">{r.wins}-{r.losses}</div>
+                      <div className="rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600">
+                        勝率 {getWinRateText(r.wins, r.matches)}
+                      </div>
                     </div>
                   </div>
                   <div className="mt-4 h-4 overflow-hidden rounded-full border border-blue-100 bg-slate-100">
@@ -1134,7 +1216,7 @@ function Ranking({ data, ranking, totalRanking }) {
 
       <AppShellCard>
         <div className="flex items-center gap-2 text-blue-600"><Users className="h-5 w-5" /><h2 className="text-2xl font-black text-slate-950">プレイヤー総合ランキング</h2></div>
-        <p className="mt-1 text-sm font-medium text-slate-500">各プレイヤーの上位3キャラ平均。</p>
+        <p className="mt-1 text-sm font-medium text-slate-500">各プレイヤーの上位3キャラ平均。こちらもグラフ形式にしました。</p>
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           {totalRanking.map((item, i) => {
             const pct = Math.max(6, Math.min(100, (item.avg / maxRating) * 100));
@@ -1145,6 +1227,9 @@ function Ranking({ data, ranking, totalRanking }) {
                     <div className="text-sm font-black text-blue-500">#{i + 1}</div>
                     <div className="text-xl"><NameTag name={item.player.name} rating={item.avg} /></div>
                     <div className="mt-2 text-xs font-semibold text-slate-400">{item.top3.map(r => `${r.characterName}:${r.rating}`).join(" / ") || "試合なし"}</div>
+                    <div className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600">
+                      勝率 {getWinRateText(item.wins, item.matches)}
+                    </div>
                   </div>
                   <div className="text-right">
                     <div className={`text-2xl font-black ${getTierTextColor(item.avg)}`}>{item.avg}</div>
@@ -1195,21 +1280,18 @@ function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlaye
         </div>
 
         {deletedPlayers.length > 0 && (
-         <AppShellCard className="lg:col-span-2">
-          <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4">
-           <div className="text-sm font-black text-amber-700">削除済みプレイヤー</div>
-            <div className="mt-3 grid gap-2 md:grid-cols-2">
+          <div className="mt-5 rounded-3xl border border-amber-200 bg-amber-50 p-4">
+            <div className="text-sm font-black text-amber-700">削除済みプレイヤー</div>
+            <div className="mt-3 space-y-2">
               {deletedPlayers.map(player => (
                 <div key={player.id} className="flex items-center justify-between rounded-2xl bg-white p-3">
                   <div className="font-bold text-slate-700">{player.name}</div>
                   <button onClick={() => restorePlayer(player.id)} disabled={saving} className="rounded-xl bg-amber-400 px-3 py-2 text-sm font-black text-slate-950 disabled:opacity-40">復元</button>
-               </div>
+                </div>
               ))}
             </div>
-           </div>
-          </AppShellCard>
-         )}
-        
+          </div>
+        )}
       </AppShellCard>
 
       <AppShellCard>
@@ -1252,10 +1334,8 @@ function HistoryView({ data, commit, saving }) {
   }
 
   async function handleUndoLatest() {
-   if (!confirm("本当に直前の試合を取り消しますか？")) return;
-   await commit(undoLatestMatch(data));
- }
-  
+    await commit(undoLatestMatch(data));
+  }
 
   return (
     <AppShellCard>
@@ -1322,9 +1402,12 @@ function Stats({ data, ranking, refreshData, saving }) {
           <Spec text="キャラ登録：1人5体まで" />
           <Spec text="削除したプレイヤーは復元可能" />
           <Spec text="2on2：チーム平均レートで計算" />
-          <Spec text="勝利：レートプラス" />
-          <Spec text="敗北：レートマイナス" />
-          <Spec text="2-0勝利：2勝制のみ変動1.5F倍" />
+          <Spec text="勝利：Elo変動に+10を加算" />
+          <Spec text="敗北：必ずマイナス" />
+          <Spec text="1試合の合計増減：必ず+5以上になるように補正" />
+          <Spec text="2-0勝利：2勝制のみ変動1.1倍" />
+          <Spec text="3連勝以上：勝者だけ連勝ボーナス" />
+          <Spec text="ガチマッチ：1on1で両者1700超えなら変動1.2倍" />
           <Spec text="変動上限：個人戦±100、チーム戦±50" />
           <Spec text="プレイヤー総合：上位3キャラ平均" />
           <Spec text="ティア：SS 2000+ / S 1800+ / A 1600+ / B 1400+ / C 1200+ / D 1199以下" />
