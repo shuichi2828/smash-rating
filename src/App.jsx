@@ -23,7 +23,7 @@ const RATE_GLOBAL_MULTIPLIER = 1.2;
 const WIN_BONUS = 10;
 const LOSS_FACTOR = 1.0;
 const GIANT_KILLING_RATING_DIFF = 200;
-const GIANT_KILLING_BONUS = 30;
+const GIANT_KILLING_BONUS_MULTIPLIER = 0.2;
 const TIER_MESSAGE_EXCLUDED_PLAYER_NAMES = ["しゅー"];
 
 const characters = [
@@ -405,6 +405,64 @@ function getWinRateText(wins, matches) {
   return `${((wins / matches) * 100).toFixed(1)}%`;
 }
 
+function getPlayerRank(avgRating) {
+  if (avgRating >= 2000) return "Master";
+  if (avgRating >= 1900) return "Diamond";
+  if (avgRating >= 1800) return "Ruby";
+  if (avgRating >= 1700) return "Sapphire";
+  if (avgRating >= 1600) return "Platinum";
+  if (avgRating >= 1550) return "Gold";
+  if (avgRating >= 1450) return "Silver";
+  if (avgRating >= 1401) return "Bronze";
+  return "Iron";
+}
+
+function getPlayerRankStyle(avgRating) {
+  const rank = getPlayerRank(avgRating);
+  const styles = {
+    Master: "border-red-950 bg-black text-red-500 shadow-red-200",
+    Diamond: "border-cyan-300 bg-cyan-50 text-cyan-700 shadow-cyan-100",
+    Ruby: "border-rose-300 bg-rose-50 text-rose-500 shadow-rose-100",
+    Sapphire: "border-blue-500 bg-blue-50 text-blue-700 shadow-blue-100",
+    Platinum: "border-slate-300 bg-gradient-to-r from-slate-100 via-white to-slate-200 text-slate-700 shadow-slate-100",
+    Gold: "border-yellow-400 bg-yellow-50 text-yellow-700 shadow-yellow-100",
+    Silver: "border-zinc-300 bg-zinc-100 text-zinc-600 shadow-zinc-100",
+    Bronze: "border-amber-700 bg-amber-50 text-amber-800 shadow-amber-100",
+    Iron: "border-gray-400 bg-gray-100 text-gray-600 shadow-gray-100"
+  };
+  return styles[rank];
+}
+
+function getPlayerRankPanelStyle(avgRating) {
+  const rank = getPlayerRank(avgRating);
+  const styles = {
+    Master: "border-red-950 bg-black text-red-500 shadow-red-200/80",
+    Diamond: "border-cyan-300 bg-cyan-50 text-cyan-700 shadow-cyan-100/80",
+    Ruby: "border-rose-300 bg-rose-50 text-rose-500 shadow-rose-100/80",
+    Sapphire: "border-blue-500 bg-blue-50 text-blue-700 shadow-blue-100/80",
+    Platinum: "border-slate-300 bg-gradient-to-r from-slate-100 via-white to-slate-200 text-slate-700 shadow-slate-100/80",
+    Gold: "border-yellow-400 bg-yellow-50 text-yellow-700 shadow-yellow-100/80",
+    Silver: "border-zinc-300 bg-zinc-100 text-zinc-600 shadow-zinc-100/80",
+    Bronze: "border-amber-700 bg-amber-50 text-amber-800 shadow-amber-100/80",
+    Iron: "border-gray-400 bg-gray-100 text-gray-600 shadow-gray-100/80"
+  };
+  return styles[rank];
+}
+
+function PlayerRankBadge({ avgRating, small = false, featured = false }) {
+  const sizeClass = featured
+    ? "px-4 py-1.5 text-sm tracking-wide shadow-md ring-1 ring-white/70"
+    : small
+      ? "px-2 py-0.5 text-[10px] tracking-wide"
+      : "px-3 py-1 text-xs tracking-wide shadow-sm";
+
+  return (
+    <span className={`inline-flex items-center justify-center rounded-full border font-black ${getPlayerRankStyle(avgRating)} ${sizeClass}`}>
+      {getPlayerRank(avgRating)}
+    </span>
+  );
+}
+
 function getStreakBonusMultiplier(streak) {
   if (streak < 3) return 1;
   return Math.min(1.5, 1 + streak * 0.05);
@@ -414,6 +472,12 @@ function getBestRatingForPlayer(data, playerId) {
   const ratings = data.ratings.filter(r => r.playerId === playerId);
   if (!ratings.length) return INITIAL_RATING;
   return Math.max(...ratings.map(r => r.rating));
+}
+
+function getPlayerAverageRating(data, playerId) {
+  const ratings = data.ratings.filter(r => r.playerId === playerId);
+  if (!ratings.length) return INITIAL_RATING;
+  return Math.round(ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length);
 }
 
 function NameTag({ name, rating }) {
@@ -452,6 +516,45 @@ function NameTag({ name, rating }) {
   return <span className="font-black text-slate-950">{name}</span>;
 }
 
+function PlayerIdentity({ data, playerId, rating, name, rankFeatured = false, nameClassName = "", rankPanel = false }) {
+  const player = data.players.find(p => p.id === playerId);
+  const displayName = name || player?.name || "不明";
+  const playerRatings = data.ratings.filter(r => r.playerId === playerId);
+  const shouldShowPlayerRank = playerRatings.length >= 3;
+  const playerRate = shouldShowPlayerRank
+    ? Math.round(playerRatings.reduce((sum, item) => sum + item.rating, 0) / playerRatings.length)
+    : null;
+  const displayRating = rating ?? getBestRatingForPlayer(data, playerId);
+
+  if (rankPanel && shouldShowPlayerRank) {
+    return (
+      <div className={`min-w-0 ${nameClassName}`}>
+        <div className={`rounded-3xl border-2 px-4 py-3 shadow-md ${getPlayerRankPanelStyle(playerRate)}`}>
+          <div className="truncate text-2xl font-black tracking-tight">
+            {displayName}
+          </div>
+          <div className="mt-2">
+            <PlayerRankBadge avgRating={playerRate} featured />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`min-w-0 ${nameClassName}`}>
+      <div className="truncate">
+        <NameTag name={displayName} rating={displayRating} />
+      </div>
+      {shouldShowPlayerRank && (
+        <div className={rankFeatured ? "mt-1.5" : "mt-1"}>
+          <PlayerRankBadge avgRating={playerRate} small={!rankFeatured} featured={rankFeatured} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TierBadge({ rating, large = false }) {
   return (
     <span className={`inline-flex items-center justify-center rounded-full border font-black ${getTierStyle(rating)} ${large ? "px-3 py-1 text-sm" : "px-2.5 py-1 text-xs"}`}>
@@ -472,9 +575,211 @@ function ChangeBadge({ change }) {
   );
 }
 
+
+const TIER_CHART_LINES = [
+  { label: "E", rating: 1000, stroke: "#6b7280" },
+  { label: "C", rating: 1200, stroke: "#d97706" },
+  { label: "B", rating: 1400, stroke: "#059669" },
+  { label: "A", rating: 1600, stroke: "#2563eb" },
+  { label: "S", rating: 1800, stroke: "#db2777" },
+  { label: "SS", rating: 2000, stroke: "#dc2626" },
+  { label: "SSS", rating: 2200, stroke: "#111827" }
+];
+
+function getRatingHistoryForSet(data, rating) {
+  const chronologicalMatches = [...data.matches].reverse();
+  const related = [];
+
+  for (const match of chronologicalMatches) {
+    const member = match.members.find(
+      item => item.playerId === rating.playerId && item.characterName === rating.characterName
+    );
+
+    if (!member) continue;
+
+    related.push({
+      match,
+      member,
+      ratingBefore: member.ratingBefore,
+      ratingAfter: member.ratingAfter,
+      ratingChange: member.ratingChange,
+      won: member.won,
+      createdAt: match.createdAt
+    });
+  }
+
+  if (!related.length) {
+    return {
+      matches: [],
+      points: [
+        { index: 0, rating: rating.rating },
+        { index: 1, rating: rating.rating }
+      ]
+    };
+  }
+
+  return {
+    matches: related,
+    points: [
+      { index: 0, rating: related[0].ratingBefore },
+      ...related.map((item, index) => ({ index: index + 1, rating: item.ratingAfter }))
+    ]
+  };
+}
+
+function RatingHistoryChart({ data, rating, onClose }) {
+  const player = data.players.find(p => p.id === rating.playerId);
+  const history = getRatingHistoryForSet(data, rating);
+  const points = history.points;
+  const width = 760;
+  const height = 320;
+  const padding = { left: 42, right: 24, top: 24, bottom: 46 };
+  const graphWidth = width - padding.left - padding.right;
+  const graphHeight = height - padding.top - padding.bottom;
+  const allRatings = [
+    ...points.map(point => point.rating),
+    ...TIER_CHART_LINES.map(line => line.rating)
+  ];
+  const rawMin = Math.min(...allRatings);
+  const rawMax = Math.max(...allRatings);
+  const yMin = Math.floor((rawMin - 80) / 100) * 100;
+  const yMax = Math.ceil((rawMax + 80) / 100) * 100;
+  const maxX = Math.max(1, points[points.length - 1]?.index || 1);
+
+  function xScale(index) {
+    return padding.left + (index / maxX) * graphWidth;
+  }
+
+  function yScale(value) {
+    if (yMax === yMin) return padding.top + graphHeight / 2;
+    return padding.top + ((yMax - value) / (yMax - yMin)) * graphHeight;
+  }
+
+  const linePoints = points.map(point => `${xScale(point.index)},${yScale(point.rating)}`).join(" ");
+  const latest = points[points.length - 1]?.rating ?? rating.rating;
+  const first = points[0]?.rating ?? INITIAL_RATING;
+  const totalChange = latest - first;
+
+  return (
+    <div className="rounded-[1.75rem] border border-blue-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <div className="text-xs font-black uppercase tracking-wider text-blue-500">Rating History</div>
+          <div className="mt-1 flex flex-wrap items-start gap-2 text-2xl font-black text-slate-950">
+            <PlayerIdentity data={data} playerId={rating.playerId} name={player?.name || "不明"} rating={rating.rating} />
+            <span className="pt-1">/ {rating.characterName}</span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs font-black">
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-700">現在 {rating.rating}</span>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">試合 {rating.matches}</span>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">勝率 {getWinRateText(rating.wins, rating.matches)}</span>
+            <span className={classNames("rounded-full px-3 py-1", totalChange >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700")}>
+              通算 {formatChange(totalChange)}
+            </span>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-black text-slate-600 transition hover:bg-slate-100"
+        >
+          閉じる
+        </button>
+      </div>
+
+      <div className="mt-4 overflow-x-auto rounded-3xl border border-blue-100 bg-blue-50/40 p-3">
+        <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[720px]">
+          <rect x="0" y="0" width={width} height={height} rx="20" fill="white" />
+
+          {TIER_CHART_LINES.map(line => {
+            const y = yScale(line.rating);
+            return (
+              <g key={line.label}>
+                <line
+                  x1={padding.left}
+                  y1={y}
+                  x2={width - padding.right}
+                  y2={y}
+                  stroke={line.stroke}
+                  strokeWidth="1.2"
+                  strokeDasharray="6 8"
+                  opacity="0.5"
+                />
+                <text x="10" y={y + 4} fontSize="12" fontWeight="900" fill={line.stroke}>
+                  {line.label}
+                </text>
+              </g>
+            );
+          })}
+
+          <line x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} stroke="#cbd5e1" strokeWidth="1.2" />
+          <line x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} stroke="#cbd5e1" strokeWidth="1.2" />
+
+          <text x={padding.left} y={height - 14} fontSize="12" fontWeight="800" fill="#475569">
+            0試合
+          </text>
+          <text x={width - padding.right - 60} y={height - 14} fontSize="12" fontWeight="800" fill="#475569">
+            {maxX}試合
+          </text>
+          <text x={width / 2 - 28} y={height - 14} fontSize="12" fontWeight="900" fill="#1d4ed8">
+            横軸：試合
+          </text>
+          <polyline
+            points={linePoints}
+            fill="none"
+            stroke="#2563eb"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {points.map(point => (
+            <circle
+              key={point.index}
+              cx={xScale(point.index)}
+              cy={yScale(point.rating)}
+              r="4"
+              fill="#2563eb"
+              stroke="white"
+              strokeWidth="2"
+            />
+          ))}
+        </svg>
+      </div>
+
+      <div className="mt-4 grid gap-2 md:grid-cols-2">
+        {history.matches.slice(-6).reverse().map((item, index) => {
+          const giantKilling = getGiantKillingFromMatch(item.match);
+          return (
+            <div key={`${item.match.id}-${index}`} className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-black text-slate-800">
+                  {new Date(item.createdAt).toLocaleDateString()} / {item.won ? "勝ち" : "負け"}
+                </div>
+                <ChangeBadge change={item.ratingChange} />
+              </div>
+              <div className="mt-1 text-xs font-bold text-slate-500">
+                {item.ratingBefore} → {item.ratingAfter}
+                {giantKilling && (
+                  <span className="ml-2 rounded-full bg-yellow-100 px-2 py-0.5 font-black text-yellow-800">
+                    ジャイアントキリング
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function scoreMultiplier(scoreWinner, scoreLoser) {
   if (scoreWinner === 2 && scoreLoser === 0) return 1.1;
   return 1.0;
+}
+
+function getGiantKillingBonus(ratingDiff) {
+  return Math.floor(ratingDiff * GIANT_KILLING_BONUS_MULTIPLIER);
 }
 
 function getGiantKillingResult({ mode, fullA, fullB, winnerTeam }) {
@@ -493,10 +798,11 @@ function getGiantKillingResult({ mode, fullA, fullB, winnerTeam }) {
 
   const winner = lowerTeam === "A" ? a : b;
   const loser = lowerTeam === "A" ? b : a;
+  const bonus = getGiantKillingBonus(ratingDiff);
 
   return {
     message: "ジャイアントキリング！",
-    bonus: GIANT_KILLING_BONUS,
+    bonus,
     ratingDiff: Math.round(ratingDiff),
     winnerTeam: lowerTeam,
     winnerPlayerId: winner.playerId,
@@ -522,10 +828,11 @@ function getGiantKillingFromMatch(match) {
 
   const winner = lowerTeam === "A" ? a : b;
   const loser = lowerTeam === "A" ? b : a;
+  const bonus = getGiantKillingBonus(ratingDiff);
 
   return {
     message: "ジャイアントキリング！",
-    bonus: GIANT_KILLING_BONUS,
+    bonus,
     ratingDiff: Math.round(ratingDiff),
     winnerTeam: lowerTeam,
     winnerPlayerId: winner.playerId,
@@ -713,11 +1020,11 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
   if (giantKilling) {
     for (const member of rawMembers) {
       if (member.playerId === giantKilling.winnerPlayerId && member.characterName === giantKilling.winnerCharacterName) {
-        member.ratingChange += GIANT_KILLING_BONUS;
+        member.ratingChange += giantKilling.bonus;
       }
 
       if (member.playerId === giantKilling.loserPlayerId && member.characterName === giantKilling.loserCharacterName) {
-        member.ratingChange -= GIANT_KILLING_BONUS;
+        member.ratingChange -= giantKilling.bonus;
       }
     }
   }
@@ -879,8 +1186,13 @@ function classNames(...items) {
   return items.filter(Boolean).join(" ");
 }
 
-function PlayerName({ players, id }) {
-  const player = players.find(p => p.id === id);
+function PlayerName({ data, players, id }) {
+  const player = data?.players?.find(p => p.id === id) || players?.find(p => p.id === id);
+
+  if (data) {
+    return <PlayerIdentity data={data} playerId={id} name={player?.name || "不明"} />;
+  }
+
   return <span>{player?.name || "不明"}</span>;
 }
 
@@ -895,10 +1207,8 @@ function SetLabel({ data, rating }) {
           🔥 {streak}連勝中
         </div>
       )}
-      <div className="truncate text-base">
-        <NameTag name={player?.name || "不明"} rating={rating.rating} />
-      </div>
-      <div className="truncate text-sm font-semibold text-blue-700">{rating.characterName}</div>
+      <PlayerIdentity data={data} playerId={rating.playerId} name={player?.name || "不明"} rating={rating.rating} />
+      <div className="mt-1 truncate text-sm font-semibold text-blue-700">{rating.characterName}</div>
     </div>
   );
 }
@@ -1052,14 +1362,30 @@ export default function App() {
   }, [data]);
 
   const totalRanking = useMemo(() => {
-    return activePlayersOf(data).map(player => {
-      const rs = data.ratings.filter(r => r.playerId === player.id).sort((a, b) => b.rating - a.rating);
-      const top3 = rs.slice(0, 3);
-      const avg = top3.length ? Math.round(top3.reduce((s, r) => s + r.rating, 0) / top3.length) : INITIAL_RATING;
-      const matches = rs.reduce((s, r) => s + r.matches, 0);
-      const wins = rs.reduce((s, r) => s + r.wins, 0);
-      return { player, avg, top3, matches, wins };
-    }).sort((a, b) => b.avg - a.avg);
+    return activePlayersOf(data)
+      .map(player => {
+        const sets = data.ratings
+          .filter(r => r.playerId === player.id)
+          .sort((a, b) => b.rating - a.rating);
+
+        if (sets.length < 3) return null;
+
+        const avg = Math.round(sets.reduce((sum, r) => sum + r.rating, 0) / sets.length);
+        const matches = sets.reduce((sum, r) => sum + r.matches, 0);
+        const wins = sets.reduce((sum, r) => sum + r.wins, 0);
+
+        return {
+          player,
+          avg,
+          sets,
+          characterCount: sets.length,
+          matches,
+          wins,
+          playerRank: getPlayerRank(avg)
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.avg - a.avg);
   }, [data]);
 
   if (loading) {
@@ -1086,9 +1412,7 @@ export default function App() {
                   <Sword className="h-8 w-8" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold uppercase tracking-[0.25em] text-blue-600">Offline Smash Rating</p>
-                  <h1 className="text-3xl font-black tracking-tight text-slate-950 md:text-5xl">Smash Growth Rating</h1>
-                  <p className="mt-2 text-sm font-medium text-slate-500 md:text-base">Supabase同期対応。友達のスマホでも同じデータを見られます。</p>
+                  <h1 className="text-3xl font-black tracking-tight text-slate-950 md:text-5xl">IGS Smash Rating</h1>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2 rounded-3xl border border-blue-100 bg-blue-50/70 p-3 text-center">
@@ -1397,7 +1721,10 @@ function MatchInput({ data, commit, saving }) {
           <div className="text-sm font-black text-blue-600">本日の上限：{getMatchRuleLabel(rule)}は1人{dailyLimit}回まで</div>
           <div className="mt-2 grid gap-2 md:grid-cols-2">
             {dailyLimitRows.map(row => (
-              <div key={row.playerId} className={classNames("rounded-2xl border px-3 py-2 text-sm font-bold", row.count >= row.limit ? "border-red-200 bg-red-50 text-red-600" : "border-blue-100 bg-blue-50 text-slate-600")}>{row.name}: {row.count}/{row.limit}</div>
+              <div key={row.playerId} className={classNames("flex items-center justify-between gap-3 rounded-2xl border px-3 py-2 text-sm font-bold", row.count >= row.limit ? "border-red-200 bg-red-50 text-red-600" : "border-blue-100 bg-blue-50 text-slate-600")}>
+                <PlayerIdentity data={data} playerId={row.playerId} name={row.name} />
+                <span className="shrink-0">{row.count}/{row.limit}</span>
+              </div>
             ))}
           </div>
         </div>
@@ -1415,14 +1742,18 @@ function MatchInput({ data, commit, saving }) {
             <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-700">{getMatchRuleLabel(inferRuleFromMatch(lastResult))} / {lastResult.mode} / Team {lastResult.winnerTeam} 勝利 / {lastResult.scoreA}-{lastResult.scoreB}</div>
             {getGiantKillingFromMatch(lastResult) && (
               <div className="rounded-3xl border border-yellow-300 bg-yellow-50 p-4 text-sm font-black text-yellow-800 shadow-sm">
-                ⚔️ ジャイアントキリング！ レート差{getGiantKillingFromMatch(lastResult).ratingDiff}。勝者に+{GIANT_KILLING_BONUS}、敗者に-{GIANT_KILLING_BONUS}を追加しました。
+                ⚔️ ジャイアントキリング！ レート差{getGiantKillingFromMatch(lastResult).ratingDiff}。補正値{getGiantKillingFromMatch(lastResult).bonus}を勝者にプラス、敗者にマイナスしました。
               </div>
             )}
             {lastResult.milestoneMessages?.length > 0 && (
               <div className="space-y-2">
                 {lastResult.milestoneMessages.map(item => (
                   <div key={item.id} className="rounded-3xl border border-yellow-200 bg-yellow-50 p-4 text-sm font-black text-yellow-800 shadow-sm">
-                    🎉 {item.playerName} / {item.characterName}: {item.message}！（{item.ratingAfter}）
+                    <div className="flex flex-wrap items-start gap-2">
+                      <span>🎉</span>
+                      <PlayerIdentity data={data} playerId={item.playerId} name={item.playerName} rating={item.ratingAfter} />
+                      <span className="pt-1">/ {item.characterName}: {item.message}！（{item.ratingAfter}）</span>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1431,7 +1762,10 @@ function MatchInput({ data, commit, saving }) {
               <div key={member.id} className="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="font-black text-slate-900"><PlayerName players={data.players} id={member.playerId} /> / {member.characterName}</div>
+                    <div className="flex flex-wrap items-start gap-2 font-black text-slate-900">
+                      <PlayerName data={data} id={member.playerId} />
+                      <span className="pt-1">/ {member.characterName}</span>
+                    </div>
                     <div className="mt-1 flex items-center gap-2 text-xs font-bold text-slate-500">{member.ratingBefore} → {member.ratingAfter} <TierBadge rating={member.ratingAfter} /></div>
                   </div>
                   <ChangeBadge change={member.ratingChange} />
@@ -1534,6 +1868,10 @@ function TeamCard({ title, team, members, updateMember, data, registeredSets, di
 
 function Ranking({ data, ranking, totalRanking }) {
   const maxRating = Math.max(2500, ...ranking.map(r => r.rating), ...totalRanking.map(r => r.avg));
+  const [selectedRatingKey, setSelectedRatingKey] = useState("");
+  const selectedRating = useMemo(() => {
+    return ranking.find(r => r.key === selectedRatingKey) || null;
+  }, [ranking, selectedRatingKey]);
 
   return (
     <div className="space-y-5">
@@ -1542,21 +1880,41 @@ function Ranking({ data, ranking, totalRanking }) {
           <div>
             <div className="flex items-center gap-2 text-blue-600"><Trophy className="h-5 w-5" /><p className="text-sm font-black uppercase tracking-wider">Ranking Board</p></div>
             <h2 className="mt-1 text-3xl font-black text-slate-950">キャラ別ランキング</h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">枠に囲まれたグラフ形式。バーの長さでレート差が見えます。</p>
+            <p className="mt-1 text-sm font-medium text-slate-500">
+              プレイヤー名・キャラ名をクリックすると、レート推移グラフを表示します。
+            </p>
           </div>
           <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">Tier color enabled</div>
         </div>
+
+        {selectedRating && (
+          <div className="mt-5">
+            <RatingHistoryChart
+              data={data}
+              rating={selectedRating}
+              onClose={() => setSelectedRatingKey("")}
+            />
+          </div>
+        )}
 
         <div className="mt-5 rounded-[1.75rem] border border-blue-100 bg-gradient-to-b from-blue-50 to-white p-4">
           <div className="space-y-3">
             {ranking.map((r, i) => {
               const pct = Math.max(6, Math.min(100, (r.rating / maxRating) * 100));
+              const isSelected = selectedRatingKey === r.key;
               return (
-                <div key={r.key} className="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm">
+                <div key={r.key} className={classNames("rounded-3xl border bg-white p-4 shadow-sm", isSelected ? "border-blue-400 ring-2 ring-blue-100" : "border-blue-100")}>
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div className="flex min-w-0 items-center gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-sm font-black text-white">#{i + 1}</div>
-                      <SetLabel data={data} rating={r} />
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRatingKey(current => current === r.key ? "" : r.key)}
+                        className="min-w-0 rounded-2xl p-1 text-left transition hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                        title="成績グラフを表示"
+                      >
+                        <SetLabel data={data} rating={r} />
+                      </button>
                     </div>
                     <div className="flex items-center gap-3">
                       <TierBadge rating={r.rating} large />
@@ -1580,24 +1938,25 @@ function Ranking({ data, ranking, totalRanking }) {
 
       <AppShellCard>
         <div className="flex items-center gap-2 text-blue-600"><Users className="h-5 w-5" /><h2 className="text-2xl font-black text-slate-950">プレイヤー総合ランキング</h2></div>
-        <p className="mt-1 text-sm font-medium text-slate-500">各プレイヤーの上位3キャラ平均。こちらもグラフ形式にしました。</p>
+        <p className="mt-1 text-sm font-medium text-slate-500">3キャラ以上登録しているプレイヤーのみ表示。登録キャラすべての平均レートで順位を付けます。</p>
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           {totalRanking.map((item, i) => {
             const pct = Math.max(6, Math.min(100, (item.avg / maxRating) * 100));
             return (
-              <div key={item.player.id} className="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm">
+              <div key={item.player.id} className="rounded-3xl border border-blue-200 bg-white p-4 shadow-md shadow-blue-100/60">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
+                  <div className="min-w-0">
                     <div className="text-sm font-black text-blue-500">#{i + 1}</div>
-                    <div className="text-xl"><NameTag name={item.player.name} rating={item.avg} /></div>
-                    <div className="mt-2 text-xs font-semibold text-slate-400">{item.top3.map(r => `${r.characterName}:${r.rating}`).join(" / ") || "試合なし"}</div>
-                    <div className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600">
-                      勝率 {getWinRateText(item.wins, item.matches)}
+                    <PlayerIdentity data={data} playerId={item.player.id} name={item.player.name} rating={item.avg} rankFeatured rankPanel nameClassName="text-xl" />
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600">{item.characterCount}キャラ平均</span>
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600">勝率 {getWinRateText(item.wins, item.matches)}</span>
                     </div>
+                    <div className="mt-2 text-xs font-semibold text-slate-400">{item.sets.map(r => `${r.characterName}:${r.rating}`).join(" / ")}</div>
                   </div>
-                  <div className="text-right">
+                  <div className="shrink-0 text-right">
                     <div className={`text-2xl font-black ${getTierTextColor(item.avg)}`}>{item.avg}</div>
-                    <TierBadge rating={item.avg} />
+                    <div className="mt-1 text-[11px] font-black uppercase tracking-wider text-slate-400">Player Rate</div>
                   </div>
                 </div>
                 <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
@@ -1606,6 +1965,11 @@ function Ranking({ data, ranking, totalRanking }) {
               </div>
             );
           })}
+          {!totalRanking.length && (
+            <div className="rounded-3xl border border-dashed border-blue-200 bg-white p-8 text-center font-bold text-slate-400 md:col-span-2">
+              3キャラ以上登録しているプレイヤーがまだいません。
+            </div>
+          )}
         </div>
       </AppShellCard>
     </div>
@@ -1635,7 +1999,7 @@ function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlaye
           {activePlayers.map(player => (
             <div key={player.id} className="flex items-center justify-between rounded-3xl border border-blue-100 bg-white p-4 shadow-sm">
               <div>
-                <div><NameTag name={player.name} rating={getBestRatingForPlayer(data, player.id)} /></div>
+                <PlayerIdentity data={data} playerId={player.id} name={player.name} rating={getBestRatingForPlayer(data, player.id)} />
                 <div className="text-xs font-bold text-slate-400">登録済み</div>
               </div>
               <button onClick={() => deletePlayer(player.id)} disabled={saving} className="rounded-2xl p-2 text-red-500 transition hover:bg-red-50 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>
@@ -1649,7 +2013,7 @@ function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlaye
             <div className="mt-3 space-y-2">
               {deletedPlayers.map(player => (
                 <div key={player.id} className="flex items-center justify-between rounded-2xl bg-white p-3">
-                  <div className="font-bold text-slate-700">{player.name}</div>
+                  <PlayerIdentity data={data} playerId={player.id} name={player.name} />
                   <div className="flex gap-2">
                     <button onClick={() => restorePlayer(player.id)} disabled={saving} className="rounded-xl bg-amber-400 px-3 py-2 text-sm font-black text-slate-950 disabled:opacity-40">復元</button>
                     <button onClick={() => hardDeletePlayer(player.id)} disabled={saving} className="rounded-xl bg-red-600 px-3 py-2 text-sm font-black text-white disabled:opacity-40">完全削除</button>
@@ -1677,8 +2041,8 @@ function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlaye
         <div className="mt-5 max-h-[520px] space-y-3 overflow-auto pr-1">
           {registeredSets.map(r => (
             <div key={r.key} className="flex items-center justify-between gap-3 rounded-3xl border border-blue-100 bg-white p-4 shadow-sm">
-              <div>
-                <div className="font-black text-slate-950"><NameTag name={data.players.find(p => p.id === r.playerId)?.name || "不明"} rating={r.rating} /> / {r.characterName}</div>
+              <div className="min-w-0">
+                <div className="flex min-w-0 items-start gap-2 font-black text-slate-950"><PlayerIdentity data={data} playerId={r.playerId} name={data.players.find(p => p.id === r.playerId)?.name || "不明"} rating={r.rating} /> <span className="pt-1">/ {r.characterName}</span></div>
                 <div className="mt-1 text-xs font-bold text-slate-400">Rate {r.rating} / {r.wins}-{r.losses} / {r.matches} matches</div>
               </div>
               <div className="flex items-center gap-2">
@@ -1729,7 +2093,7 @@ function HistoryView({ data, deleteMatchOnly, saving }) {
                   <div className="mt-1 text-sm font-bold text-slate-400">{new Date(match.createdAt).toLocaleString()}</div>
                   {giantKilling && (
                     <div className="mt-2 inline-flex rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1 text-xs font-black text-yellow-800">
-                      ⚔️ ジャイアントキリング！ レート差{giantKilling.ratingDiff}
+                      ⚔️ ジャイアントキリング！ レート差{giantKilling.ratingDiff} / 補正{giantKilling.bonus}
                     </div>
                   )}
                 </div>
@@ -1740,7 +2104,10 @@ function HistoryView({ data, deleteMatchOnly, saving }) {
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {match.members.map(m => (
                   <div key={m.id} className="flex justify-between rounded-2xl border border-blue-100 bg-blue-50/60 p-3">
-                    <div className="font-bold text-slate-700"><PlayerName players={data.players} id={m.playerId} /> / {m.characterName}</div>
+                    <div className="flex flex-wrap items-start gap-2 font-bold text-slate-700">
+                      <PlayerName data={data} id={m.playerId} />
+                      <span className="pt-1">/ {m.characterName}</span>
+                    </div>
                     <ChangeBadge change={m.ratingChange} />
                   </div>
                 ))}
@@ -1784,13 +2151,12 @@ function Stats({ data, ranking, refreshData, saving }) {
           <Spec text="勝利：レートプラス" />
           <Spec text="敗北：必ずマイナス" />
           <Spec text="2-0勝利：2勝制のみ変動1.1倍" />
-          <Spec text="全体レート変動：以前の1.2倍" />
-          <Spec text="ジャイアントキリング：1on1でレート差200以上の低レート側が勝つと、勝者+30・敗者-30を追加。上限突破あり" />
           <Spec text="3連勝以上：勝者だけ連勝ボーナス。上限は1.5倍" />
           <Spec text="ガチマッチ：1on1で両者1700超えなら変動1.2倍" />
-          <Spec text="平均1500以下の対戦：変動1.1倍" />
-          <Spec text="変動上限：個人戦±100、チーム戦±50" />
-          <Spec text="プレイヤー総合：上位3キャラ平均" />
+          <Spec text="変動上限：個人戦±100、チーム戦±50。ただしジャイアントキリング補正は上限突破" />
+          <Spec text="ジャイアントキリング：1on1でレート差200以上の低レート側勝利時、レート差×0.2を切り捨てて勝者に加点・敗者に減点" />
+          <Spec text="ランキング：プレイヤー名・キャラ名クリックでレート推移グラフ表示" />
+          <Spec text="プレイヤー総合：3キャラ以上登録しているプレイヤーのみ表示。登録全キャラの平均レートでMaster〜Ironランクを付与" />
           <Spec text="ティア：SSS 2200+ / SS 2000+ / S 1800+ / A 1600+ / B 1400+ / C 1200+ / D 1001-1199 / E 1000以下" />
         </div>
       </AppShellCard>
