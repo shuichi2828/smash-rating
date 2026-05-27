@@ -299,23 +299,27 @@ function getK(matches) {
 }
 
 function getTier(rating) {
+  if (rating >= 2200) return "SSS";
   if (rating >= 2000) return "SS";
   if (rating >= 1800) return "S";
   if (rating >= 1600) return "A";
   if (rating >= 1400) return "B";
   if (rating >= 1200) return "C";
+  if (rating <= 1000) return "E";
   return "D";
 }
 
 function getTierStyle(rating) {
   const tier = getTier(rating);
   const styles = {
+    SSS: "text-red-600 bg-black border-red-500",
     SS: "text-red-600 bg-red-50 border-red-200",
     S: "text-pink-600 bg-pink-50 border-pink-200",
     A: "text-blue-600 bg-blue-50 border-blue-200",
     B: "text-emerald-600 bg-emerald-50 border-emerald-200",
     C: "text-amber-600 bg-amber-50 border-amber-200",
-    D: "text-slate-500 bg-slate-50 border-slate-200"
+    D: "text-slate-500 bg-slate-50 border-slate-200",
+    E: "text-gray-600 bg-gray-100 border-gray-300"
   };
   return styles[tier];
 }
@@ -323,12 +327,14 @@ function getTierStyle(rating) {
 function getTierTextColor(rating) {
   const tier = getTier(rating);
   const styles = {
+    SSS: "text-red-700 drop-shadow-[0_1px_1px_rgba(0,0,0,0.95)]",
     SS: "text-red-600",
     S: "text-pink-600",
     A: "text-blue-600",
     B: "text-emerald-600",
     C: "text-amber-600",
-    D: "text-slate-500"
+    D: "text-slate-500",
+    E: "text-gray-500"
   };
   return styles[tier];
 }
@@ -336,12 +342,14 @@ function getTierTextColor(rating) {
 function getTierBarColor(rating) {
   const tier = getTier(rating);
   const styles = {
+    SSS: "bg-gradient-to-r from-black via-red-700 to-black",
     SS: "bg-red-500",
     S: "bg-pink-500",
     A: "bg-blue-500",
     B: "bg-emerald-500",
     C: "bg-amber-500",
-    D: "bg-slate-400"
+    D: "bg-slate-400",
+    E: "bg-gray-400"
   };
   return styles[tier];
 }
@@ -353,7 +361,7 @@ function getWinRateText(wins, matches) {
 
 function getStreakBonusMultiplier(streak) {
   if (streak < 3) return 1;
-  return 1 + streak * 0.05;
+  return Math.min(1.5, 1 + streak * 0.05);
 }
 
 function getBestRatingForPlayer(data, playerId) {
@@ -364,6 +372,16 @@ function getBestRatingForPlayer(data, playerId) {
 
 function NameTag({ name, rating }) {
   const tier = getTier(rating);
+
+  if (tier === "SSS") {
+    return (
+      <span className="inline-flex items-center rounded-xl border border-black bg-gradient-to-r from-black via-zinc-900 to-black px-3 py-1.5 shadow-md shadow-red-200">
+        <span className="font-black tracking-wider italic text-red-600 drop-shadow-[0_1px_1px_rgba(0,0,0,1)]">
+          {name}
+        </span>
+      </span>
+    );
+  }
 
   if (tier === "SS") {
     return (
@@ -441,6 +459,7 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
 
   const avgA = fullA.reduce((sum, m) => sum + m.ratingRecord.rating, 0) / fullA.length;
   const avgB = fullB.reduce((sum, m) => sum + m.ratingRecord.rating, 0) / fullB.length;
+  const matchAverage = [...fullA, ...fullB].reduce((sum, m) => sum + m.ratingRecord.rating, 0) / (fullA.length + fullB.length);
   const expA = expectedScore(avgA, avgB);
   const expB = expectedScore(avgB, avgA);
 
@@ -456,6 +475,7 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
     fullB[0]?.ratingRecord.rating > 1700;
 
   const gachiFactor = isGachiMatch ? 1.2 : 1;
+  const lowAverageFactor = matchAverage <= 1500 ? 1.1 : 1;
 
   function apply(member, team, won, expected) {
     const before = member.ratingRecord.rating;
@@ -472,6 +492,7 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
         (baseAbs * RATE_INTENSITY_MULTIPLIER + WIN_BONUS) *
           ruleFactor *
           gachiFactor *
+          lowAverageFactor *
           streakBonus
       );
       change = Math.max(1, change);
@@ -481,7 +502,8 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
           RATE_INTENSITY_MULTIPLIER *
           LOSS_FACTOR *
           ruleFactor *
-          gachiFactor
+          gachiFactor *
+          lowAverageFactor
       );
       change = Math.min(-1, change);
     }
@@ -543,7 +565,7 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
     ratingAfter: member.ratingBefore + member.ratingChange
   }));
 
-  return { avgA, avgB, expectedA: expA, expectedB: expB, isGachiMatch, members };
+  return { avgA, avgB, expectedA: expA, expectedB: expB, isGachiMatch, lowAverageBonus: lowAverageFactor > 1, members };
 }
 
 function applyMatch(data, form) {
@@ -575,6 +597,7 @@ function applyMatch(data, form) {
     scoreB: form.scoreB,
     winnerTeam: form.winnerTeam,
     isGachiMatch: calculation.isGachiMatch,
+    lowAverageBonus: calculation.lowAverageBonus,
     members: calculation.members,
     avgA: calculation.avgA,
     avgB: calculation.avgB,
@@ -754,6 +777,22 @@ export default function App() {
     setSetPlayerId(id);
   }
 
+  async function hardDeletePlayer(id) {
+    const player = data.players.find(p => p.id === id);
+    const label = player?.name || "このプレイヤー";
+    if (!confirm(`${label}さんを完全削除しますか？復元できなくなり、このプレイヤーが参加した試合履歴も削除されます。`)) return;
+
+    const base = {
+      ...data,
+      players: data.players.filter(player => player.id !== id),
+      ratings: data.ratings.filter(rating => rating.playerId !== id)
+    };
+    const remainingMatches = data.matches.filter(match => !match.members.some(member => member.playerId === id));
+    const next = rebuildDataWithMatches(base, remainingMatches);
+    await commit(next);
+    if (setPlayerId === id) setSetPlayerId(activePlayersOf(next)[0]?.id || "");
+  }
+
   async function addCharacterSet() {
     if (!setPlayerId || !setCharacterName) return;
     const player = data.players.find(p => p.id === setPlayerId);
@@ -882,6 +921,7 @@ export default function App() {
                 addCharacterSet={addCharacterSet}
                 deleteCharacterSet={deleteCharacterSet}
                 restorePlayer={restorePlayer}
+                hardDeletePlayer={hardDeletePlayer}
                 saving={saving}
               />
             )}
@@ -1128,6 +1168,8 @@ function MatchInput({ data, commit, saving }) {
 }
 
 function TeamCard({ title, team, members, updateMember, data, registeredSets, disabled = false, active = false }) {
+  const selectablePlayers = activePlayersOf(data).filter(player => registeredSets.some(r => r.playerId === player.id));
+
   return (
     <div className={classNames(
       "rounded-[1.75rem] border-2 bg-white p-4 shadow-sm transition",
@@ -1139,25 +1181,61 @@ function TeamCard({ title, team, members, updateMember, data, registeredSets, di
       </div>
       <div className="space-y-3">
         {members.map((member, index) => {
-          const selectedKey = ratingKey(member.playerId, member.characterName);
+          const memberRatings = registeredSets.filter(r => r.playerId === member.playerId);
+          const currentRating = registeredSets.find(r => r.key === ratingKey(member.playerId, member.characterName));
+
           return (
             <div key={`${team}-${index}`} className="rounded-3xl border border-blue-100 bg-blue-50/60 p-3">
               <div className="mb-2 text-xs font-black uppercase tracking-wider text-blue-500">Player {index + 1}</div>
-              <select
-                value={selectedKey}
-                onChange={e => {
-                  const selected = registeredSets.find(r => r.key === e.target.value);
-                  if (!selected) return;
-                  updateMember(team, index, { playerId: selected.playerId, characterName: selected.characterName });
-                }}
-                disabled={disabled}
-                className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400 disabled:opacity-50"
-              >
-                {registeredSets.map(r => {
-                  const player = data.players.find(p => p.id === r.playerId);
-                  return <option key={r.key} value={r.key}>{player?.name || "不明"} / {r.characterName} / {r.rating} / {getTier(r.rating)}</option>;
-                })}
-              </select>
+
+              <div className="grid gap-2 md:grid-cols-2">
+                <label className="space-y-1">
+                  <span className="text-xs font-bold text-slate-500">選手</span>
+                  <select
+                    value={member.playerId}
+                    onChange={e => {
+                      const nextPlayerId = e.target.value;
+                      const firstRating = registeredSets.find(r => r.playerId === nextPlayerId);
+                      updateMember(team, index, {
+                        playerId: nextPlayerId,
+                        characterName: firstRating?.characterName || ""
+                      });
+                    }}
+                    disabled={disabled}
+                    className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400 disabled:opacity-50"
+                  >
+                    {selectablePlayers.map(player => (
+                      <option key={player.id} value={player.id}>{player.name}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-xs font-bold text-slate-500">キャラ</span>
+                  <select
+                    value={member.characterName}
+                    onChange={e => updateMember(team, index, { characterName: e.target.value })}
+                    disabled={disabled || !member.playerId}
+                    className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400 disabled:opacity-50"
+                  >
+                    {memberRatings.map(r => (
+                      <option key={r.key} value={r.characterName}>{r.characterName}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between rounded-2xl border border-blue-100 bg-white px-3 py-2">
+                <span className="text-xs font-black text-slate-500">現在レート</span>
+                {currentRating ? (
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-black ${getTierTextColor(currentRating.rating)}`}>{currentRating.rating}</span>
+                    <TierBadge rating={currentRating.rating} />
+                  </div>
+                ) : (
+                  <span className="text-sm font-bold text-slate-400">未登録</span>
+                )}
+              </div>
             </div>
           );
         })}
@@ -1167,7 +1245,7 @@ function TeamCard({ title, team, members, updateMember, data, registeredSets, di
 }
 
 function Ranking({ data, ranking, totalRanking }) {
-  const maxRating = Math.max(2300, ...ranking.map(r => r.rating), ...totalRanking.map(r => r.avg));
+  const maxRating = Math.max(2500, ...ranking.map(r => r.rating), ...totalRanking.map(r => r.avg));
 
   return (
     <div className="space-y-5">
@@ -1176,7 +1254,6 @@ function Ranking({ data, ranking, totalRanking }) {
           <div>
             <div className="flex items-center gap-2 text-blue-600"><Trophy className="h-5 w-5" /><p className="text-sm font-black uppercase tracking-wider">Ranking Board</p></div>
             <h2 className="mt-1 text-3xl font-black text-slate-950">キャラ別ランキング</h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">枠に囲まれたグラフ形式。バーの長さでレート差が見えます。</p>
           </div>
           <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">Tier color enabled</div>
         </div>
@@ -1246,7 +1323,7 @@ function Ranking({ data, ranking, totalRanking }) {
   );
 }
 
-function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlayer, setPlayerId, setSetPlayerId, setCharacterName, setSetCharacterName, addCharacterSet, deleteCharacterSet, restorePlayer, saving }) {
+function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlayer, setPlayerId, setSetPlayerId, setCharacterName, setSetCharacterName, addCharacterSet, deleteCharacterSet, restorePlayer, hardDeletePlayer, saving }) {
   const activePlayers = activePlayersOf(data);
   const deletedPlayers = data.players.filter(player => !isActivePlayer(player));
   const registeredSets = data.ratings
@@ -1284,7 +1361,10 @@ function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlaye
               {deletedPlayers.map(player => (
                 <div key={player.id} className="flex items-center justify-between rounded-2xl bg-white p-3">
                   <div className="font-bold text-slate-700">{player.name}</div>
-                  <button onClick={() => restorePlayer(player.id)} disabled={saving} className="rounded-xl bg-amber-400 px-3 py-2 text-sm font-black text-slate-950 disabled:opacity-40">復元</button>
+                  <div className="flex gap-2">
+                    <button onClick={() => restorePlayer(player.id)} disabled={saving} className="rounded-xl bg-amber-400 px-3 py-2 text-sm font-black text-slate-950 disabled:opacity-40">復元</button>
+                    <button onClick={() => hardDeletePlayer(player.id)} disabled={saving} className="rounded-xl bg-red-600 px-3 py-2 text-sm font-black text-white disabled:opacity-40">完全削除</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1400,14 +1480,14 @@ function Stats({ data, ranking, refreshData, saving }) {
           <Spec text="キャラ登録：1人5体まで" />
           <Spec text="削除したプレイヤーは復元可能" />
           <Spec text="2on2：チーム平均レートで計算" />
-          <Spec text="勝利：レートがプラス" />
+          <Spec text="勝利：レートプラス" />
           <Spec text="敗北：必ずマイナス" />
+          <Spec text="1試合の合計増減：必ず+5以上になるように補正" />
           <Spec text="2-0勝利：2勝制のみ変動1.1倍" />
-          <Spec text="3連勝以上：勝者だけ連勝ボーナス" />
           <Spec text="ガチマッチ：1on1で両者1700超えなら変動1.2倍" />
           <Spec text="変動上限：個人戦±100、チーム戦±50" />
           <Spec text="プレイヤー総合：上位3キャラ平均" />
-          <Spec text="ティア：SS 2000+ / S 1800+ / A 1600+ / B 1400+ / C 1200+ / D 1199以下" />
+          <Spec text="ティア：SSS 2200+ / SS 2000+ / S 1800+ / A 1600+ / B 1400+ / C 1200+ / D 1001-1199 / E 1000以下" />
         </div>
       </AppShellCard>
     </div>
