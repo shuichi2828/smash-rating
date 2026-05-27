@@ -24,6 +24,7 @@ const WIN_BONUS = 10;
 const LOSS_FACTOR = 1.0;
 const GIANT_KILLING_RATING_DIFF = 200;
 const GIANT_KILLING_BONUS = 30;
+const TIER_MESSAGE_EXCLUDED_PLAYER_NAMES = ["しゅー"];
 
 const characters = [
   "おまかせ", "マリオ", "ドンキーコング", "リンク", "サムス", "ダークサムス", "ヨッシー", "カービィ", "フォックス",
@@ -107,11 +108,12 @@ function createRating(playerId, characterName) {
 }
 
 function createInitialData() {
+  const now = new Date().toISOString();
   const players = [
-    { id: uid(), name: "しゅー", createdAt: new Date().toISOString(), deletedAt: null },
-    { id: uid(), name: "友人A", createdAt: new Date().toISOString(), deletedAt: null },
-    { id: uid(), name: "友人B", createdAt: new Date().toISOString(), deletedAt: null },
-    { id: uid(), name: "友人C", createdAt: new Date().toISOString(), deletedAt: null }
+    { id: uid(), name: "しゅー", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false },
+    { id: uid(), name: "友人A", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false },
+    { id: uid(), name: "友人B", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false },
+    { id: uid(), name: "友人C", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false }
   ];
 
   const defaultCharacters = ["マリオ", "ルイージ", "クラウド", "サムス"];
@@ -129,7 +131,10 @@ function appPlayerFromDb(row) {
     id: row.id,
     name: row.name,
     createdAt: row.created_at,
-    deletedAt: row.deleted_at || null
+    deletedAt: row.deleted_at || null,
+    reachedTierS: Boolean(row.reached_tier_s),
+    reachedTierSS: Boolean(row.reached_tier_ss),
+    reachedTierSSS: Boolean(row.reached_tier_sss)
   };
 }
 
@@ -190,7 +195,10 @@ function dbPlayerFromApp(player) {
     id: player.id,
     name: player.name,
     created_at: player.createdAt || new Date().toISOString(),
-    deleted_at: player.deletedAt || null
+    deleted_at: player.deletedAt || null,
+    reached_tier_s: Boolean(player.reachedTierS),
+    reached_tier_ss: Boolean(player.reachedTierSS),
+    reached_tier_sss: Boolean(player.reachedTierSSS)
   };
 }
 
@@ -337,6 +345,14 @@ function getTier(rating) {
   if (rating >= 1200) return "C";
   if (rating <= 1000) return "E";
   return "D";
+}
+
+function getTierMilestones(rating) {
+  return [
+    { tier: "S", threshold: 1800, playerFlag: "reachedTierS", message: "TierS初到達おめでとう https://www.amazon.co.jp/g/A9QXL8E8A8G6CQ?t=SvL" },
+    { tier: "SS", threshold: 2000, playerFlag: "reachedTierSS", message: "TierSS初到達おめでとう https://www.amazon.co.jp/g/9HVUXBE33UT5CPt=SvL" },
+    { tier: "SSS", threshold: 2200, playerFlag: "reachedTierSSS", message: "TierSSS初到達おめでとう https://www.amazon.co.jp/g/JS4DLDLGEA8RC9t=SvL" }
+  ].filter(milestone => rating >= milestone.threshold);
 }
 
 function getTierStyle(rating) {
@@ -736,6 +752,47 @@ function applyMatch(data, form) {
     newRatings.set(key, updated);
   }
 
+  const milestoneMessages = [];
+  const milestoneKeys = new Set();
+  const nextPlayers = data.players.map(player => ({
+    ...player,
+    reachedTierS: Boolean(player.reachedTierS),
+    reachedTierSS: Boolean(player.reachedTierSS),
+    reachedTierSSS: Boolean(player.reachedTierSSS)
+  }));
+
+  for (const member of calculation.members) {
+    if (!member.won || member.ratingAfter <= member.ratingBefore) continue;
+
+    const playerIndex = nextPlayers.findIndex(player => player.id === member.playerId);
+    if (playerIndex === -1) continue;
+
+    const player = nextPlayers[playerIndex];
+    const milestones = getTierMilestones(member.ratingAfter);
+    const shouldHideTierMessage = TIER_MESSAGE_EXCLUDED_PLAYER_NAMES.includes(player.name);
+
+    for (const milestone of milestones) {
+      if (player[milestone.playerFlag]) continue;
+      const uniqueKey = `${player.id}-${milestone.tier}`;
+      if (milestoneKeys.has(uniqueKey)) continue;
+
+      player[milestone.playerFlag] = true;
+      milestoneKeys.add(uniqueKey);
+
+      if (!shouldHideTierMessage) {
+        milestoneMessages.push({
+          id: uid(),
+          playerId: player.id,
+          playerName: player.name,
+          characterName: member.characterName,
+          tier: milestone.tier,
+          message: milestone.message,
+          ratingAfter: member.ratingAfter
+        });
+      }
+    }
+  }
+
   const match = {
     id: uid(),
     mode: form.mode,
@@ -749,12 +806,13 @@ function applyMatch(data, form) {
     lowAverageBonus: calculation.lowAverageBonus,
     giantKilling: calculation.giantKilling,
     members: calculation.members,
+    milestoneMessages,
     avgA: calculation.avgA,
     avgB: calculation.avgB,
     createdAt: new Date().toISOString()
   };
 
-  return { ...data, ratings: Array.from(newRatings.values()), matches: [match, ...data.matches] };
+  return { ...data, players: nextPlayers, ratings: Array.from(newRatings.values()), matches: [match, ...data.matches] };
 }
 
 function resetRatingStats(rating) {
@@ -924,7 +982,7 @@ export default function App() {
     const name = newPlayerName.trim();
     if (!name) return;
     if (data.players.some(p => p.name === name && isActivePlayer(p))) return alert("同じ名前のプレイヤーがいます。別名にしてください。");
-    const player = { id: uid(), name, createdAt: new Date().toISOString(), deletedAt: null };
+    const player = { id: uid(), name, createdAt: new Date().toISOString(), deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false };
     const next = { ...data, players: [...data.players, player] };
     await commit(next);
     setSetPlayerId(player.id);
@@ -1028,7 +1086,9 @@ export default function App() {
                   <Sword className="h-8 w-8" />
                 </div>
                 <div>
-                  <h1 className="text-3xl font-black tracking-tight text-slate-950 md:text-5xl">IGS Smash Rating</h1>
+                  <p className="text-sm font-bold uppercase tracking-[0.25em] text-blue-600">Offline Smash Rating</p>
+                  <h1 className="text-3xl font-black tracking-tight text-slate-950 md:text-5xl">Smash Growth Rating</h1>
+                  <p className="mt-2 text-sm font-medium text-slate-500 md:text-base">Supabase同期対応。友達のスマホでも同じデータを見られます。</p>
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2 rounded-3xl border border-blue-100 bg-blue-50/70 p-3 text-center">
@@ -1482,6 +1542,7 @@ function Ranking({ data, ranking, totalRanking }) {
           <div>
             <div className="flex items-center gap-2 text-blue-600"><Trophy className="h-5 w-5" /><p className="text-sm font-black uppercase tracking-wider">Ranking Board</p></div>
             <h2 className="mt-1 text-3xl font-black text-slate-950">キャラ別ランキング</h2>
+            <p className="mt-1 text-sm font-medium text-slate-500">枠に囲まれたグラフ形式。バーの長さでレート差が見えます。</p>
           </div>
           <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">Tier color enabled</div>
         </div>
@@ -1723,6 +1784,8 @@ function Stats({ data, ranking, refreshData, saving }) {
           <Spec text="勝利：レートプラス" />
           <Spec text="敗北：必ずマイナス" />
           <Spec text="2-0勝利：2勝制のみ変動1.1倍" />
+          <Spec text="全体レート変動：以前の1.2倍" />
+          <Spec text="ジャイアントキリング：1on1でレート差200以上の低レート側が勝つと、勝者+30・敗者-30を追加。上限突破あり" />
           <Spec text="3連勝以上：勝者だけ連勝ボーナス。上限は1.5倍" />
           <Spec text="ガチマッチ：1on1で両者1700超えなら変動1.2倍" />
           <Spec text="平均1500以下の対戦：変動1.1倍" />
