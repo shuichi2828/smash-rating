@@ -15,15 +15,18 @@ import { supabase } from "./lib/supabase";
 const INITIAL_RATING = 1500;
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
 const MAX_CHARACTERS_PER_PLAYER = 5;
-const DAILY_SINGLE_LIMIT = 20;
-const DAILY_BO3_LIMIT = 10;
+const DAILY_SINGLE_LIMIT = 30;
+const DAILY_BO3_LIMIT = 15;
 const MIN_TOTAL_CHANGE = 5;
 const RATE_INTENSITY_MULTIPLIER = 2.1;
+const RATE_GLOBAL_MULTIPLIER = 1.2;
 const WIN_BONUS = 10;
 const LOSS_FACTOR = 1.0;
+const GIANT_KILLING_RATING_DIFF = 200;
+const GIANT_KILLING_BONUS = 30;
 
 const characters = [
-  "マリオ", "ドンキーコング", "リンク", "サムス", "ダークサムス", "ヨッシー", "カービィ", "フォックス",
+  "おまかせ", "マリオ", "ドンキーコング", "リンク", "サムス", "ダークサムス", "ヨッシー", "カービィ", "フォックス",
   "ピカチュウ", "ルイージ", "ネス", "キャプテン・ファルコン", "プリン", "ピーチ", "デイジー", "クッパ",
   "アイスクライマー", "シーク", "ゼルダ", "ドクターマリオ", "ピチュー", "ファルコ", "マルス", "ルキナ",
   "こどもリンク", "ガノンドロフ", "ミュウツー", "ロイ", "クロム", "Mr.ゲーム&ウォッチ", "メタナイト",
@@ -104,12 +107,11 @@ function createRating(playerId, characterName) {
 }
 
 function createInitialData() {
-  const now = new Date().toISOString();
   const players = [
-    { id: uid(), name: "しゅー", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false },
-    { id: uid(), name: "友人A", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false },
-    { id: uid(), name: "友人B", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false },
-    { id: uid(), name: "友人C", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false }
+    { id: uid(), name: "しゅー", createdAt: new Date().toISOString(), deletedAt: null },
+    { id: uid(), name: "友人A", createdAt: new Date().toISOString(), deletedAt: null },
+    { id: uid(), name: "友人B", createdAt: new Date().toISOString(), deletedAt: null },
+    { id: uid(), name: "友人C", createdAt: new Date().toISOString(), deletedAt: null }
   ];
 
   const defaultCharacters = ["マリオ", "ルイージ", "クラウド", "サムス"];
@@ -127,10 +129,7 @@ function appPlayerFromDb(row) {
     id: row.id,
     name: row.name,
     createdAt: row.created_at,
-    deletedAt: row.deleted_at || null,
-    reachedTierS: Boolean(row.reached_tier_s),
-    reachedTierSS: Boolean(row.reached_tier_ss),
-    reachedTierSSS: Boolean(row.reached_tier_sss)
+    deletedAt: row.deleted_at || null
   };
 }
 
@@ -191,10 +190,7 @@ function dbPlayerFromApp(player) {
     id: player.id,
     name: player.name,
     created_at: player.createdAt || new Date().toISOString(),
-    deleted_at: player.deletedAt || null,
-    reached_tier_s: Boolean(player.reachedTierS),
-    reached_tier_ss: Boolean(player.reachedTierSS),
-    reached_tier_sss: Boolean(player.reachedTierSSS)
+    deleted_at: player.deletedAt || null
   };
 }
 
@@ -295,6 +291,33 @@ async function syncAllDataToSupabase(data) {
   await insertRows("match_members", memberRows);
 }
 
+async function deleteSingleMatchFromSupabase(matchId) {
+  const { error: membersError } = await supabase
+    .from("match_members")
+    .delete()
+    .eq("match_id", matchId);
+
+  if (membersError) throw membersError;
+
+  const { error: matchError } = await supabase
+    .from("matches")
+    .delete()
+    .eq("id", matchId);
+
+  if (matchError) throw matchError;
+}
+
+async function upsertRatingsToSupabase(ratings) {
+  if (!ratings.length) return;
+
+  const { error } = await supabase
+    .from("character_ratings")
+    .upsert(ratings.map(dbRatingFromApp), { onConflict: "id" });
+
+  if (error) throw error;
+}
+
+
 function expectedScore(ratingA, ratingB) {
   return 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
 }
@@ -314,14 +337,6 @@ function getTier(rating) {
   if (rating >= 1200) return "C";
   if (rating <= 1000) return "E";
   return "D";
-}
-
-function getTierMilestones(rating) {
-  return [
-    { tier: "S", threshold: 1800, playerFlag: "reachedTierS", message: "TierS初到達おめでとう https://www.amazon.co.jp/g/A9QXL8E8A8G6CQ?t=SvL" },
-    { tier: "SS", threshold: 2000, playerFlag: "reachedTierSS", message: "TierSS初到達おめでとう https://www.amazon.co.jp/g/9HVUXBE33UT5CPt=SvL" },
-    { tier: "SSS", threshold: 2200, playerFlag: "reachedTierSSS", message: "TierSSS初到達おめでとう https://www.amazon.co.jp/g/JS4DLDLGEA8RC9t=SvL" }
-  ].filter(milestone => rating >= milestone.threshold);
 }
 
 function getTierStyle(rating) {
@@ -446,6 +461,65 @@ function scoreMultiplier(scoreWinner, scoreLoser) {
   return 1.0;
 }
 
+function getGiantKillingResult({ mode, fullA, fullB, winnerTeam }) {
+  if (mode !== "1v1" || fullA.length !== 1 || fullB.length !== 1) return null;
+
+  const a = fullA[0];
+  const b = fullB[0];
+  const ratingA = a.ratingRecord.rating;
+  const ratingB = b.ratingRecord.rating;
+  const ratingDiff = Math.abs(ratingA - ratingB);
+
+  if (ratingDiff < GIANT_KILLING_RATING_DIFF || ratingA === ratingB) return null;
+
+  const lowerTeam = ratingA < ratingB ? "A" : "B";
+  if (winnerTeam !== lowerTeam) return null;
+
+  const winner = lowerTeam === "A" ? a : b;
+  const loser = lowerTeam === "A" ? b : a;
+
+  return {
+    message: "ジャイアントキリング！",
+    bonus: GIANT_KILLING_BONUS,
+    ratingDiff: Math.round(ratingDiff),
+    winnerTeam: lowerTeam,
+    winnerPlayerId: winner.playerId,
+    winnerCharacterName: winner.characterName,
+    loserPlayerId: loser.playerId,
+    loserCharacterName: loser.characterName
+  };
+}
+
+function getGiantKillingFromMatch(match) {
+  if (match.giantKilling) return match.giantKilling;
+  if (match.mode !== "1v1" || !match.members?.length) return null;
+
+  const a = match.members.find(member => member.team === "A");
+  const b = match.members.find(member => member.team === "B");
+  if (!a || !b) return null;
+
+  const ratingDiff = Math.abs(a.ratingBefore - b.ratingBefore);
+  if (ratingDiff < GIANT_KILLING_RATING_DIFF || a.ratingBefore === b.ratingBefore) return null;
+
+  const lowerTeam = a.ratingBefore < b.ratingBefore ? "A" : "B";
+  if (match.winnerTeam !== lowerTeam) return null;
+
+  const winner = lowerTeam === "A" ? a : b;
+  const loser = lowerTeam === "A" ? b : a;
+
+  return {
+    message: "ジャイアントキリング！",
+    bonus: GIANT_KILLING_BONUS,
+    ratingDiff: Math.round(ratingDiff),
+    winnerTeam: lowerTeam,
+    winnerPlayerId: winner.playerId,
+    winnerCharacterName: winner.characterName,
+    loserPlayerId: loser.playerId,
+    loserCharacterName: loser.characterName
+  };
+}
+
+
 function getOrCreateRating(ratings, playerId, characterName) {
   const key = ratingKey(playerId, characterName);
   const existing = ratings.find(r => r.key === key);
@@ -549,7 +623,8 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
           ruleFactor *
           gachiFactor *
           lowAverageFactor *
-          streakBonus
+          streakBonus *
+          RATE_GLOBAL_MULTIPLIER
       );
       change = Math.max(1, change);
     } else {
@@ -559,7 +634,8 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
           LOSS_FACTOR *
           ruleFactor *
           gachiFactor *
-          lowAverageFactor
+          lowAverageFactor *
+          RATE_GLOBAL_MULTIPLIER
       );
       change = Math.min(-1, change);
     }
@@ -616,12 +692,26 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
     }
   }
 
+  const giantKilling = getGiantKillingResult({ mode, fullA, fullB, winnerTeam });
+
+  if (giantKilling) {
+    for (const member of rawMembers) {
+      if (member.playerId === giantKilling.winnerPlayerId && member.characterName === giantKilling.winnerCharacterName) {
+        member.ratingChange += GIANT_KILLING_BONUS;
+      }
+
+      if (member.playerId === giantKilling.loserPlayerId && member.characterName === giantKilling.loserCharacterName) {
+        member.ratingChange -= GIANT_KILLING_BONUS;
+      }
+    }
+  }
+
   const members = rawMembers.map(member => ({
     ...member,
     ratingAfter: member.ratingBefore + member.ratingChange
   }));
 
-  return { avgA, avgB, expectedA: expA, expectedB: expB, isGachiMatch, lowAverageBonus: lowAverageFactor > 1, members };
+  return { avgA, avgB, expectedA: expA, expectedB: expB, isGachiMatch, lowAverageBonus: lowAverageFactor > 1, giantKilling, members };
 }
 
 function applyMatch(data, form) {
@@ -646,43 +736,6 @@ function applyMatch(data, form) {
     newRatings.set(key, updated);
   }
 
-  const milestoneMessages = [];
-  const milestoneKeys = new Set();
-  const nextPlayers = data.players.map(player => ({
-    ...player,
-    reachedTierS: Boolean(player.reachedTierS),
-    reachedTierSS: Boolean(player.reachedTierSS),
-    reachedTierSSS: Boolean(player.reachedTierSSS)
-  }));
-
-  for (const member of calculation.members) {
-    if (!member.won || member.ratingAfter <= member.ratingBefore) continue;
-
-    const playerIndex = nextPlayers.findIndex(player => player.id === member.playerId);
-    if (playerIndex === -1) continue;
-
-    const player = nextPlayers[playerIndex];
-    const milestones = getTierMilestones(member.ratingAfter);
-
-    for (const milestone of milestones) {
-      if (player[milestone.playerFlag]) continue;
-      const uniqueKey = `${player.id}-${milestone.tier}`;
-      if (milestoneKeys.has(uniqueKey)) continue;
-
-      player[milestone.playerFlag] = true;
-      milestoneKeys.add(uniqueKey);
-      milestoneMessages.push({
-        id: uid(),
-        playerId: player.id,
-        playerName: player.name,
-        characterName: member.characterName,
-        tier: milestone.tier,
-        message: milestone.message,
-        ratingAfter: member.ratingAfter
-      });
-    }
-  }
-
   const match = {
     id: uid(),
     mode: form.mode,
@@ -694,14 +747,14 @@ function applyMatch(data, form) {
     winnerTeam: form.winnerTeam,
     isGachiMatch: calculation.isGachiMatch,
     lowAverageBonus: calculation.lowAverageBonus,
+    giantKilling: calculation.giantKilling,
     members: calculation.members,
-    milestoneMessages,
     avgA: calculation.avgA,
     avgB: calculation.avgB,
     createdAt: new Date().toISOString()
   };
 
-  return { ...data, players: nextPlayers, ratings: Array.from(newRatings.values()), matches: [match, ...data.matches] };
+  return { ...data, ratings: Array.from(newRatings.values()), matches: [match, ...data.matches] };
 }
 
 function resetRatingStats(rating) {
@@ -844,11 +897,34 @@ export default function App() {
     }
   }
 
+  async function deleteMatchOnly(matchId) {
+    setSaving(true);
+    setErrorMessage("");
+
+    const before = data;
+    const next = deleteMatch(data, matchId);
+
+    setData(next);
+
+    try {
+      await deleteSingleMatchFromSupabase(matchId);
+      await upsertRatingsToSupabase(next.ratings);
+    } catch (error) {
+      console.error(error);
+      setData(before);
+      setErrorMessage(error.message || "試合の取り消しに失敗しました。");
+      await refreshData();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+
   async function addPlayer() {
     const name = newPlayerName.trim();
     if (!name) return;
     if (data.players.some(p => p.name === name && isActivePlayer(p))) return alert("同じ名前のプレイヤーがいます。別名にしてください。");
-    const player = { id: uid(), name, createdAt: new Date().toISOString(), deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false };
+    const player = { id: uid(), name, createdAt: new Date().toISOString(), deletedAt: null };
     const next = { ...data, players: [...data.players, player] };
     await commit(next);
     setSetPlayerId(player.id);
@@ -1022,7 +1098,7 @@ export default function App() {
                 saving={saving}
               />
             )}
-            {tab === "history" && <HistoryView data={data} commit={commit} saving={saving} />}
+            {tab === "history" && <HistoryView data={data} deleteMatchOnly={deleteMatchOnly} saving={saving} />}
             {tab === "stats" && <Stats data={data} ranking={ranking} totalRanking={totalRanking} refreshData={refreshData} saving={saving} />}
           </motion.main>
         </AnimatePresence>
@@ -1092,6 +1168,17 @@ function MatchInput({ data, commit, saving }) {
     mode === "1v1" &&
     selectedRatingA?.rating > 1700 &&
     selectedRatingB?.rating > 1700;
+
+  const ratingDiffPreview = selectedRatingA && selectedRatingB
+    ? Math.abs(selectedRatingA.rating - selectedRatingB.rating)
+    : 0;
+  const lowerTeamPreview = selectedRatingA && selectedRatingB
+    ? selectedRatingA.rating < selectedRatingB.rating ? "A" : selectedRatingB.rating < selectedRatingA.rating ? "B" : null
+    : null;
+  const isGiantKillingPreview =
+    mode === "1v1" &&
+    ratingDiffPreview >= GIANT_KILLING_RATING_DIFF &&
+    winnerTeam === lowerTeamPreview;
 
   useEffect(() => {
     setScore(rule === "single" ? "1-0" : "2-1");
@@ -1201,12 +1288,14 @@ function MatchInput({ data, commit, saving }) {
             <div
               className={classNames(
                 "rounded-full border px-4 py-2 text-xl font-black shadow-sm transition",
-                isGachiPreview
-                  ? "border-red-300 bg-red-600 text-white shadow-red-200"
-                  : "border-blue-200 bg-white text-blue-600"
+                isGiantKillingPreview
+                  ? "border-yellow-300 bg-yellow-400 text-slate-950 shadow-yellow-200"
+                  : isGachiPreview
+                    ? "border-red-300 bg-red-600 text-white shadow-red-200"
+                    : "border-blue-200 bg-white text-blue-600"
               )}
             >
-              {isGachiPreview ? "ガチマッチ VS" : "VS"}
+              {isGiantKillingPreview ? "ジャイアントキリング対象 VS" : isGachiPreview ? "ガチマッチ VS" : "VS"}
             </div>
           </div>
           <TeamCard title="Team B" team="B" members={activeB} updateMember={updateMember} data={data} registeredSets={registeredSets} disabled={inputLocked} active={winnerTeam === "B"} />
@@ -1264,6 +1353,11 @@ function MatchInput({ data, commit, saving }) {
         ) : (
           <div className="mt-4 space-y-3">
             <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-700">{getMatchRuleLabel(inferRuleFromMatch(lastResult))} / {lastResult.mode} / Team {lastResult.winnerTeam} 勝利 / {lastResult.scoreA}-{lastResult.scoreB}</div>
+            {getGiantKillingFromMatch(lastResult) && (
+              <div className="rounded-3xl border border-yellow-300 bg-yellow-50 p-4 text-sm font-black text-yellow-800 shadow-sm">
+                ⚔️ ジャイアントキリング！ レート差{getGiantKillingFromMatch(lastResult).ratingDiff}。勝者に+{GIANT_KILLING_BONUS}、敗者に-{GIANT_KILLING_BONUS}を追加しました。
+              </div>
+            )}
             {lastResult.milestoneMessages?.length > 0 && (
               <div className="space-y-2">
                 {lastResult.milestoneMessages.map(item => (
@@ -1539,14 +1633,17 @@ function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlaye
   );
 }
 
-function HistoryView({ data, commit, saving }) {
+function HistoryView({ data, deleteMatchOnly, saving }) {
   async function handleDeleteMatch(matchId) {
     if (!confirm("この試合を取り消しますか？レートとランキングも再計算されます。")) return;
-    await commit(deleteMatch(data, matchId));
+    await deleteMatchOnly(matchId);
   }
 
   async function handleUndoLatest() {
-    await commit(undoLatestMatch(data));
+    const latest = data.matches[0];
+    if (!latest) return;
+    if (!confirm("直前の試合を取り消しますか？レートとランキングも再計算されます。")) return;
+    await deleteMatchOnly(latest.id);
   }
 
   return (
@@ -1554,33 +1651,42 @@ function HistoryView({ data, commit, saving }) {
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 className="text-2xl font-black text-slate-950">対戦履歴</h2>
-          <p className="mt-1 text-sm font-medium text-slate-500">過去の試合を個別に取り消せます。取り消し後は全試合を再計算します。</p>
+          <p className="mt-1 text-sm font-medium text-slate-500">過去の試合を個別に取り消せます。取り消し後はレートとランキングを再計算します。</p>
         </div>
         <button onClick={handleUndoLatest} disabled={!data.matches.length || saving} className="flex items-center justify-center gap-2 rounded-2xl bg-amber-400 px-4 py-3 font-black text-slate-950 transition hover:bg-amber-300 disabled:opacity-40"><RotateCcw className="h-4 w-4" />直前の試合を取り消す</button>
       </div>
 
       <div className="mt-5 space-y-3">
-        {data.matches.map(match => (
-          <div key={match.id} className="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div>
-                <div className="font-black text-slate-950">{getMatchRuleLabel(inferRuleFromMatch(match))} / {match.mode} / Team {match.winnerTeam} 勝利 / {match.scoreA}-{match.scoreB}</div>
-                <div className="mt-1 text-sm font-bold text-slate-400">{new Date(match.createdAt).toLocaleString()}</div>
-              </div>
-              <button onClick={() => handleDeleteMatch(match.id)} disabled={saving} className="flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-black text-red-600 transition hover:bg-red-100 disabled:opacity-40">
-                <Trash2 className="h-4 w-4" />この試合を取り消す
-              </button>
-            </div>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              {match.members.map(m => (
-                <div key={m.id} className="flex justify-between rounded-2xl border border-blue-100 bg-blue-50/60 p-3">
-                  <div className="font-bold text-slate-700"><PlayerName players={data.players} id={m.playerId} /> / {m.characterName}</div>
-                  <ChangeBadge change={m.ratingChange} />
+        {data.matches.map(match => {
+          const giantKilling = getGiantKillingFromMatch(match);
+
+          return (
+            <div key={match.id} className="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <div className="font-black text-slate-950">{getMatchRuleLabel(inferRuleFromMatch(match))} / {match.mode} / Team {match.winnerTeam} 勝利 / {match.scoreA}-{match.scoreB}</div>
+                  <div className="mt-1 text-sm font-bold text-slate-400">{new Date(match.createdAt).toLocaleString()}</div>
+                  {giantKilling && (
+                    <div className="mt-2 inline-flex rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1 text-xs font-black text-yellow-800">
+                      ⚔️ ジャイアントキリング！ レート差{giantKilling.ratingDiff}
+                    </div>
+                  )}
                 </div>
-              ))}
+                <button onClick={() => handleDeleteMatch(match.id)} disabled={saving} className="flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-black text-red-600 transition hover:bg-red-100 disabled:opacity-40">
+                  <Trash2 className="h-4 w-4" />この試合を取り消す
+                </button>
+              </div>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                {match.members.map(m => (
+                  <div key={m.id} className="flex justify-between rounded-2xl border border-blue-100 bg-blue-50/60 p-3">
+                    <div className="font-bold text-slate-700"><PlayerName players={data.players} id={m.playerId} /> / {m.characterName}</div>
+                    <ChangeBadge change={m.ratingChange} />
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {!data.matches.length && <p className="font-bold text-slate-400">まだ履歴がありません。</p>}
       </div>
     </AppShellCard>
@@ -1610,17 +1716,18 @@ function Stats({ data, ranking, refreshData, saving }) {
           <Spec text="形式：1on1 / 2on2" />
           <Spec text="ルール：1勝制がメイン。2勝制も選択可能" />
           <Spec text="1勝制：レート変動は2勝制の半分" />
-          <Spec text="1日上限：1勝制20回、2勝制10回" />
+          <Spec text="1日上限：1勝制30回、2勝制15回" />
           <Spec text="キャラ登録：1人5体まで" />
           <Spec text="削除したプレイヤーは復元可能" />
           <Spec text="2on2：チーム平均レートで計算" />
           <Spec text="勝利：レートプラス" />
           <Spec text="敗北：必ずマイナス" />
           <Spec text="2-0勝利：2勝制のみ変動1.1倍" />
+          <Spec text="3連勝以上：勝者だけ連勝ボーナス。上限は1.5倍" />
           <Spec text="ガチマッチ：1on1で両者1700超えなら変動1.2倍" />
+          <Spec text="平均1500以下の対戦：変動1.1倍" />
           <Spec text="変動上限：個人戦±100、チーム戦±50" />
           <Spec text="プレイヤー総合：上位3キャラ平均" />
-          <Spec text="TierS / TierSS / TierSSS：プレイヤーごとに初到達時だけAmazonギフトコード表示" />
           <Spec text="ティア：SSS 2200+ / SS 2000+ / S 1800+ / A 1600+ / B 1400+ / C 1200+ / D 1001-1199 / E 1000以下" />
         </div>
       </AppShellCard>
