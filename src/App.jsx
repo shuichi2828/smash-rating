@@ -104,11 +104,12 @@ function createRating(playerId, characterName) {
 }
 
 function createInitialData() {
+  const now = new Date().toISOString();
   const players = [
-    { id: uid(), name: "しゅー", createdAt: new Date().toISOString(), deletedAt: null },
-    { id: uid(), name: "友人A", createdAt: new Date().toISOString(), deletedAt: null },
-    { id: uid(), name: "友人B", createdAt: new Date().toISOString(), deletedAt: null },
-    { id: uid(), name: "友人C", createdAt: new Date().toISOString(), deletedAt: null }
+    { id: uid(), name: "しゅー", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false },
+    { id: uid(), name: "友人A", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false },
+    { id: uid(), name: "友人B", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false },
+    { id: uid(), name: "友人C", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false }
   ];
 
   const defaultCharacters = ["マリオ", "ルイージ", "クラウド", "サムス"];
@@ -126,7 +127,10 @@ function appPlayerFromDb(row) {
     id: row.id,
     name: row.name,
     createdAt: row.created_at,
-    deletedAt: row.deleted_at || null
+    deletedAt: row.deleted_at || null,
+    reachedTierS: Boolean(row.reached_tier_s),
+    reachedTierSS: Boolean(row.reached_tier_ss),
+    reachedTierSSS: Boolean(row.reached_tier_sss)
   };
 }
 
@@ -187,7 +191,10 @@ function dbPlayerFromApp(player) {
     id: player.id,
     name: player.name,
     created_at: player.createdAt || new Date().toISOString(),
-    deleted_at: player.deletedAt || null
+    deleted_at: player.deletedAt || null,
+    reached_tier_s: Boolean(player.reachedTierS),
+    reached_tier_ss: Boolean(player.reachedTierSS),
+    reached_tier_sss: Boolean(player.reachedTierSSS)
   };
 }
 
@@ -307,6 +314,14 @@ function getTier(rating) {
   if (rating >= 1200) return "C";
   if (rating <= 1000) return "E";
   return "D";
+}
+
+function getTierMilestones(rating) {
+  return [
+    { tier: "S", threshold: 1800, playerFlag: "reachedTierS", message: "TierS初到達おめでとう https://www.amazon.co.jp/g/A9QXL8E8A8G6CQ?t=SvL" },
+    { tier: "SS", threshold: 2000, playerFlag: "reachedTierSS", message: "TierSS初到達おめでとう https://www.amazon.co.jp/g/9HVUXBE33UT5CPt=SvL" },
+    { tier: "SSS", threshold: 2200, playerFlag: "reachedTierSSS", message: "TierSSS初到達おめでとう https://www.amazon.co.jp/g/JS4DLDLGEA8RC9t=SvL" }
+  ].filter(milestone => rating >= milestone.threshold);
 }
 
 function getTierStyle(rating) {
@@ -438,6 +453,41 @@ function getOrCreateRating(ratings, playerId, characterName) {
   return createRating(playerId, characterName);
 }
 
+function getRatingForMember(data, member) {
+  if (!member?.playerId || !member?.characterName) return null;
+  return data.ratings.find(r => r.key === ratingKey(member.playerId, member.characterName)) || null;
+}
+
+function getUniqueDefaultMembers(registeredSets) {
+  const seen = new Set();
+  return registeredSets
+    .filter(rating => {
+      if (!rating.playerId || seen.has(rating.playerId)) return false;
+      seen.add(rating.playerId);
+      return true;
+    })
+    .map(rating => ({ playerId: rating.playerId, characterName: rating.characterName }));
+}
+
+function normalizeMember(member, fallbackMember, registeredSets) {
+  const exact = registeredSets.find(
+    rating => rating.key === ratingKey(member?.playerId, member?.characterName)
+  );
+
+  if (exact) {
+    return { playerId: exact.playerId, characterName: exact.characterName };
+  }
+
+  if (member?.playerId) {
+    const firstForPlayer = registeredSets.find(rating => rating.playerId === member.playerId);
+    if (firstForPlayer) {
+      return { playerId: firstForPlayer.playerId, characterName: firstForPlayer.characterName };
+    }
+  }
+
+  return fallbackMember || { playerId: "", characterName: "" };
+}
+
 function roundChange(value) {
   return Math.round(value);
 }
@@ -446,13 +496,19 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
   const ratingsMap = new Map(data.ratings.map(r => [r.key, { ...r }]));
 
   const fullA = teamA.map(m => {
-    const r = getOrCreateRating(Array.from(ratingsMap.values()), m.playerId, m.characterName);
+    const r = getRatingForMember(data, m);
+    if (!r) {
+      throw new Error("Team Aに未登録のプレイヤー・キャラがあります。選手とキャラを選び直してください。");
+    }
     ratingsMap.set(r.key, { ...r });
     return { ...m, ratingRecord: { ...r } };
   });
 
   const fullB = teamB.map(m => {
-    const r = getOrCreateRating(Array.from(ratingsMap.values()), m.playerId, m.characterName);
+    const r = getRatingForMember(data, m);
+    if (!r) {
+      throw new Error("Team Bに未登録のプレイヤー・キャラがあります。選手とキャラを選び直してください。");
+    }
     ratingsMap.set(r.key, { ...r });
     return { ...m, ratingRecord: { ...r } };
   });
@@ -574,7 +630,10 @@ function applyMatch(data, form) {
 
   for (const member of calculation.members) {
     const key = ratingKey(member.playerId, member.characterName);
-    const current = newRatings.get(key) || getOrCreateRating([], member.playerId, member.characterName);
+    const current = newRatings.get(key);
+    if (!current) {
+      throw new Error("登録済みレートが見つかりません。選手とキャラを選び直してください。");
+    }
     const updated = {
       ...current,
       rating: member.ratingAfter,
@@ -585,6 +644,43 @@ function applyMatch(data, form) {
       highestRating: Math.max(current.highestRating, member.ratingAfter)
     };
     newRatings.set(key, updated);
+  }
+
+  const milestoneMessages = [];
+  const milestoneKeys = new Set();
+  const nextPlayers = data.players.map(player => ({
+    ...player,
+    reachedTierS: Boolean(player.reachedTierS),
+    reachedTierSS: Boolean(player.reachedTierSS),
+    reachedTierSSS: Boolean(player.reachedTierSSS)
+  }));
+
+  for (const member of calculation.members) {
+    if (!member.won || member.ratingAfter <= member.ratingBefore) continue;
+
+    const playerIndex = nextPlayers.findIndex(player => player.id === member.playerId);
+    if (playerIndex === -1) continue;
+
+    const player = nextPlayers[playerIndex];
+    const milestones = getTierMilestones(member.ratingAfter);
+
+    for (const milestone of milestones) {
+      if (player[milestone.playerFlag]) continue;
+      const uniqueKey = `${player.id}-${milestone.tier}`;
+      if (milestoneKeys.has(uniqueKey)) continue;
+
+      player[milestone.playerFlag] = true;
+      milestoneKeys.add(uniqueKey);
+      milestoneMessages.push({
+        id: uid(),
+        playerId: player.id,
+        playerName: player.name,
+        characterName: member.characterName,
+        tier: milestone.tier,
+        message: milestone.message,
+        ratingAfter: member.ratingAfter
+      });
+    }
   }
 
   const match = {
@@ -599,12 +695,13 @@ function applyMatch(data, form) {
     isGachiMatch: calculation.isGachiMatch,
     lowAverageBonus: calculation.lowAverageBonus,
     members: calculation.members,
+    milestoneMessages,
     avgA: calculation.avgA,
     avgB: calculation.avgB,
     createdAt: new Date().toISOString()
   };
 
-  return { ...data, ratings: Array.from(newRatings.values()), matches: [match, ...data.matches] };
+  return { ...data, players: nextPlayers, ratings: Array.from(newRatings.values()), matches: [match, ...data.matches] };
 }
 
 function resetRatingStats(rating) {
@@ -751,7 +848,7 @@ export default function App() {
     const name = newPlayerName.trim();
     if (!name) return;
     if (data.players.some(p => p.name === name && isActivePlayer(p))) return alert("同じ名前のプレイヤーがいます。別名にしてください。");
-    const player = { id: uid(), name, createdAt: new Date().toISOString(), deletedAt: null };
+    const player = { id: uid(), name, createdAt: new Date().toISOString(), deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false };
     const next = { ...data, players: [...data.players, player] };
     await commit(next);
     setSetPlayerId(player.id);
@@ -945,10 +1042,11 @@ function MiniStat({ label, value }) {
 
 function MatchInput({ data, commit, saving }) {
   const registeredSets = data.ratings.filter(r => activePlayersOf(data).some(p => p.id === r.playerId));
-  const fallbackSet = registeredSets[0] || { playerId: "", characterName: "" };
-  const secondSet = registeredSets[1] || fallbackSet;
-  const thirdSet = registeredSets[2] || fallbackSet;
-  const fourthSet = registeredSets[3] || secondSet;
+  const defaultMembers = getUniqueDefaultMembers(registeredSets);
+  const fallbackSet = defaultMembers[0] || { playerId: "", characterName: "" };
+  const secondSet = defaultMembers[1] || fallbackSet;
+  const thirdSet = defaultMembers[2] || secondSet;
+  const fourthSet = defaultMembers[3] || thirdSet;
 
   const [mode, setMode] = useState("1v1");
   const [rule, setRule] = useState("single");
@@ -974,7 +1072,8 @@ function MatchInput({ data, commit, saving }) {
 
   const form = { mode, rule, teamA: activeA, teamB: activeB, winnerTeam, scoreA: realScoreA, scoreB: realScoreB };
   const requiredSets = mode === "1v1" ? 2 : 4;
-  const hasEnoughSets = registeredSets.length >= requiredSets;
+  const uniqueSelectablePlayerCount = new Set(registeredSets.map(r => r.playerId)).size;
+  const hasEnoughSets = uniqueSelectablePlayerCount >= requiredSets;
   const selectedPlayerIds = [...activeA, ...activeB].map(member => member.playerId).filter(Boolean);
   const dailyLimit = getDailyLimit(rule);
   const dailyLimitRows = selectedPlayerIds.map(playerId => {
@@ -1000,19 +1099,23 @@ function MatchInput({ data, commit, saving }) {
 
   useEffect(() => {
     if (!registeredSets.length) return;
-    const keySet = new Set(registeredSets.map(r => r.key));
-    const allSelected = [...teamA, ...teamB].every(member => keySet.has(ratingKey(member.playerId, member.characterName)));
-    if (!allSelected) {
-      setTeamA([
-        { playerId: fallbackSet.playerId, characterName: fallbackSet.characterName },
-        { playerId: secondSet.playerId, characterName: secondSet.characterName }
-      ]);
-      setTeamB([
-        { playerId: thirdSet.playerId, characterName: thirdSet.characterName },
-        { playerId: fourthSet.playerId, characterName: fourthSet.characterName }
-      ]);
-    }
-  }, [registeredSets.length]);
+
+    const defaults = getUniqueDefaultMembers(registeredSets);
+    const fallbackA1 = defaults[0] || { playerId: "", characterName: "" };
+    const fallbackA2 = defaults[1] || fallbackA1;
+    const fallbackB1 = defaults[2] || fallbackA2;
+    const fallbackB2 = defaults[3] || fallbackB1;
+
+    setTeamA(current => [
+      normalizeMember(current[0], fallbackA1, registeredSets),
+      normalizeMember(current[1], fallbackA2, registeredSets)
+    ]);
+
+    setTeamB(current => [
+      normalizeMember(current[0], fallbackB1, registeredSets),
+      normalizeMember(current[1], fallbackB2, registeredSets)
+    ]);
+  }, [registeredSets.length, mode]);
 
   function updateMember(team, index, patch) {
     const setter = team === "A" ? setTeamA : setTeamB;
@@ -1022,7 +1125,14 @@ function MatchInput({ data, commit, saving }) {
 
   async function submit() {
     if (isSubmitting || inputLocked || saving) return;
-    if (!hasEnoughSets) return alert(`プレイヤー・キャラセットを${requiredSets}つ以上登録してください。`);
+    if (!hasEnoughSets) {
+      return alert(
+        `${mode === "2v2"
+          ? "2on2には登録済みキャラを持つプレイヤーが4人必要です"
+          : "1on1には登録済みキャラを持つプレイヤーが2人必要です"
+        }。現在は${uniqueSelectablePlayerCount}人です。`
+      );
+    }
 
     const ids = [...activeA, ...activeB].map(m => m.playerId);
     const setKeys = [...activeA, ...activeB].map(m => ratingKey(m.playerId, m.characterName));
@@ -1030,17 +1140,27 @@ function MatchInput({ data, commit, saving }) {
     if (ids.some(id => !id)) return alert("プレイヤー・キャラセットを選んでください。");
     if (new Set(ids).size !== ids.length) return alert("同じ試合内で同じプレイヤーは重複できません。");
     if (new Set(setKeys).size !== setKeys.length) return alert("同じプレイヤー・キャラセットは重複できません。");
+    if ([...activeA, ...activeB].some(member => !getRatingForMember(data, member))) {
+      return alert("未登録のプレイヤー・キャラが選ばれています。選手とキャラを選び直してください。");
+    }
 
     const limitExceeded = dailyLimitRows.find(row => row.count >= row.limit);
     if (limitExceeded) return alert(`${limitExceeded.name}さんは今日の${getMatchRuleLabel(rule)}の上限（${limitExceeded.limit}回）に達しています。`);
 
     setIsSubmitting(true);
-    const next = applyMatch(data, form);
-    const newMatch = next.matches[0];
-    await commit(next);
-    setLastResult(newMatch);
-    setInputLocked(true);
-    setIsSubmitting(false);
+
+    try {
+      const next = applyMatch(data, form);
+      const newMatch = next.matches[0];
+      await commit(next);
+      setLastResult(newMatch);
+      setInputLocked(true);
+    } catch (error) {
+      console.error(error);
+      alert(error.message || "試合結果の反映に失敗しました。選手とキャラを選び直してください。");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function startNextMatch() {
@@ -1144,6 +1264,15 @@ function MatchInput({ data, commit, saving }) {
         ) : (
           <div className="mt-4 space-y-3">
             <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-700">{getMatchRuleLabel(inferRuleFromMatch(lastResult))} / {lastResult.mode} / Team {lastResult.winnerTeam} 勝利 / {lastResult.scoreA}-{lastResult.scoreB}</div>
+            {lastResult.milestoneMessages?.length > 0 && (
+              <div className="space-y-2">
+                {lastResult.milestoneMessages.map(item => (
+                  <div key={item.id} className="rounded-3xl border border-yellow-200 bg-yellow-50 p-4 text-sm font-black text-yellow-800 shadow-sm">
+                    🎉 {item.playerName} / {item.characterName}: {item.message}！（{item.ratingAfter}）
+                  </div>
+                ))}
+              </div>
+            )}
             {lastResult.members.map(member => (
               <div key={member.id} className="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
@@ -1182,7 +1311,12 @@ function TeamCard({ title, team, members, updateMember, data, registeredSets, di
       <div className="space-y-3">
         {members.map((member, index) => {
           const memberRatings = registeredSets.filter(r => r.playerId === member.playerId);
-          const currentRating = registeredSets.find(r => r.key === ratingKey(member.playerId, member.characterName));
+          const selectedCharacterName = memberRatings.some(r => r.characterName === member.characterName)
+            ? member.characterName
+            : (memberRatings[0]?.characterName || "");
+          const currentRating = registeredSets.find(
+            r => r.key === ratingKey(member.playerId, selectedCharacterName)
+          );
 
           return (
             <div key={`${team}-${index}`} className="rounded-3xl border border-blue-100 bg-blue-50/60 p-3">
@@ -1213,7 +1347,7 @@ function TeamCard({ title, team, members, updateMember, data, registeredSets, di
                 <label className="space-y-1">
                   <span className="text-xs font-bold text-slate-500">キャラ</span>
                   <select
-                    value={member.characterName}
+                    value={selectedCharacterName}
                     onChange={e => updateMember(team, index, { characterName: e.target.value })}
                     disabled={disabled || !member.playerId}
                     className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400 disabled:opacity-50"
@@ -1482,11 +1616,11 @@ function Stats({ data, ranking, refreshData, saving }) {
           <Spec text="2on2：チーム平均レートで計算" />
           <Spec text="勝利：レートプラス" />
           <Spec text="敗北：必ずマイナス" />
-          <Spec text="1試合の合計増減：必ず+5以上になるように補正" />
           <Spec text="2-0勝利：2勝制のみ変動1.1倍" />
           <Spec text="ガチマッチ：1on1で両者1700超えなら変動1.2倍" />
           <Spec text="変動上限：個人戦±100、チーム戦±50" />
           <Spec text="プレイヤー総合：上位3キャラ平均" />
+          <Spec text="TierS / TierSS / TierSSS：プレイヤーごとに初到達時だけAmazonギフトコード表示" />
           <Spec text="ティア：SSS 2200+ / SS 2000+ / S 1800+ / A 1600+ / B 1400+ / C 1200+ / D 1001-1199 / E 1000以下" />
         </div>
       </AppShellCard>
