@@ -914,6 +914,35 @@ function getGiantKillingFromMatch(match) {
 }
 
 
+function isGachiMatchFromMatch(match) {
+  if (match?.isGachiMatch) return true;
+  if (match?.mode !== "1v1" || !Array.isArray(match?.members)) return false;
+
+  const a = match.members.find(member => member.team === "A");
+  const b = match.members.find(member => member.team === "B");
+
+  return Number(a?.ratingBefore) > 1700 && Number(b?.ratingBefore) > 1700;
+}
+
+function isRandomGachiMatch(match) {
+  return Boolean(match?.isRandomMatch) && isGachiMatchFromMatch(match);
+}
+
+function getRandomMatchLabel(match) {
+  if (!match?.isRandomMatch) return "";
+  return isRandomGachiMatch(match) ? "ランダムVIPマッチ" : "ランダムマッチ";
+}
+
+function getRandomMatchBadgeClass(match) {
+  if (isRandomGachiMatch(match)) {
+    return "border-red-700 bg-black text-red-500 shadow-red-200";
+  }
+
+  return "border-indigo-200 bg-indigo-50 text-indigo-700 shadow-sm";
+}
+
+
+
 function getOrCreateRating(ratings, playerId, characterName) {
   const key = ratingKey(playerId, characterName);
   const existing = ratings.find(r => r.key === key);
@@ -1685,6 +1714,7 @@ function MatchInput({ data, commit, saving }) {
     mode === "1v1" &&
     ratingDiffPreview >= GIANT_KILLING_RATING_DIFF &&
     winnerTeam === lowerTeamPreview;
+  const isRandomGachiPreview = isRandomMatch && isGachiPreview;
 
   const randomMatchEligibleSets = registeredSets.filter(rating =>
     randomMatchTierSelection.includes(getTier(rating.rating))
@@ -1930,16 +1960,26 @@ function MatchInput({ data, commit, saving }) {
                 initial={{ opacity: 0, scale: 0.9, y: 8 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: -8 }}
-                className="mt-3 rounded-3xl border border-yellow-300 bg-yellow-50 p-4 text-center text-xl font-black text-yellow-800 shadow-sm"
+                className={classNames(
+                  "mt-3 rounded-3xl border p-4 text-center text-xl font-black shadow-sm",
+                  isRandomGachiPreview
+                    ? "border-red-700 bg-black text-red-500 shadow-red-200"
+                    : "border-yellow-300 bg-yellow-50 text-yellow-800"
+                )}
               >
-                 ランダムマッチ
+                 {isRandomGachiPreview ? "ランダムVIPマッチ" : "ランダムマッチ"}
               </motion.div>
             )}
           </AnimatePresence>
 
           {isRandomMatch && (
-            <div className="mt-3 rounded-2xl border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm font-black text-yellow-800">
-              この試合はランダムマッチです。
+            <div className={classNames(
+              "mt-3 rounded-2xl border px-3 py-2 text-sm font-black",
+              isRandomGachiPreview
+                ? "border-red-700 bg-black text-red-500 shadow-sm shadow-red-200"
+                : "border-yellow-300 bg-yellow-50 text-yellow-800"
+            )}>
+              この試合は{isRandomGachiPreview ? "ランダムVIPマッチ" : "ランダムマッチ"}です。
             </div>
           )}
         </div>
@@ -1950,7 +1990,9 @@ function MatchInput({ data, commit, saving }) {
             <div
               className={classNames(
                 "rounded-full border px-4 py-2 text-xl font-black shadow-sm transition",
-                isRandomMatch
+                isRandomGachiPreview
+                  ? "border-red-700 bg-black text-red-500 shadow-red-200"
+                  : isRandomMatch
                   ? "border-indigo-300 bg-indigo-600 text-white shadow-indigo-200"
                   : isGiantKillingPreview
                     ? "border-yellow-300 bg-yellow-400 text-slate-950 shadow-yellow-200"
@@ -1959,7 +2001,7 @@ function MatchInput({ data, commit, saving }) {
                     : "border-blue-200 bg-white text-blue-600"
               )}
             >
-              {isRandomMatch ? "ランダムマッチ VS" : isGiantKillingPreview ? "ジャイアントキリング対象 VS" : isGachiPreview ? "ガチマッチ VS" : "VS"}
+              {isRandomGachiPreview ? "ランダムVIPマッチ VS" : isRandomMatch ? "ランダムマッチ VS" : isGiantKillingPreview ? "ジャイアントキリング対象 VS" : isGachiPreview ? "VIPマッチ VS" : "VS"}
             </div>
           </div>
           <TeamCard title="Team B" team="B" members={activeB} updateMember={updateMember} data={data} registeredSets={registeredSets} disabled={inputLocked} active={winnerTeam === "B"} />
@@ -2019,10 +2061,10 @@ function MatchInput({ data, commit, saving }) {
           <div className="mt-4 rounded-3xl border border-dashed border-blue-200 bg-blue-50/70 p-5 text-sm font-medium text-slate-500">試合結果を確定すると、ここに増減が表示されます。</div>
         ) : (
           <div className="mt-4 space-y-3">
-            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-700">{shownResult.isRandomMatch ? "ランダムマッチ / " : ""}{getMatchRuleLabel(inferRuleFromMatch(shownResult))} / {shownResult.mode} / Team {shownResult.winnerTeam} 勝利 / {shownResult.scoreA}-{shownResult.scoreB}</div>
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-700">{getRandomMatchLabel(shownResult) ? `${getRandomMatchLabel(shownResult)} / ` : ""}{getMatchRuleLabel(inferRuleFromMatch(shownResult))} / {shownResult.mode} / Team {shownResult.winnerTeam} 勝利 / {shownResult.scoreA}-{shownResult.scoreB}</div>
             {shownResult.isRandomMatch && (
-              <div className="rounded-3xl border border-indigo-200 bg-indigo-50 p-4 text-sm font-black text-indigo-700 shadow-sm">
-                 ランダムマッチ
+              <div className={`rounded-3xl border p-4 text-sm font-black ${getRandomMatchBadgeClass(shownResult)}`}>
+                 {getRandomMatchLabel(shownResult)}
               </div>
             )}
             {getGiantKillingFromMatch(shownResult) && (
@@ -2411,12 +2453,12 @@ function HistoryView({ data, deleteMatchOnly, saving }) {
             <div key={match.id} className="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <div className="font-black text-slate-950">{match.isRandomMatch ? "ランダムマッチ / " : ""}{getMatchRuleLabel(inferRuleFromMatch(match))} / {match.mode} / Team {match.winnerTeam} 勝利 / {match.scoreA}-{match.scoreB}</div>
+                  <div className="font-black text-slate-950">{getRandomMatchLabel(match) ? `${getRandomMatchLabel(match)} / ` : ""}{getMatchRuleLabel(inferRuleFromMatch(match))} / {match.mode} / Team {match.winnerTeam} 勝利 / {match.scoreA}-{match.scoreB}</div>
                   <div className="mt-1 text-sm font-bold text-slate-400">{new Date(match.createdAt).toLocaleString()}</div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {match.isRandomMatch && (
-                      <div className="inline-flex rounded-full border border-indigo-300 bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">
-                        ランダムマッチ
+                      <div className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${getRandomMatchBadgeClass(match)}`}>
+                        {getRandomMatchLabel(match)}
                       </div>
                     )}
                     {giantKilling && (
@@ -2481,11 +2523,11 @@ function Stats({ data, ranking, refreshData, saving }) {
           <Spec text="敗北：必ずマイナス" />
           <Spec text="2-0勝利：2勝制のみ変動1.1倍" />
           <Spec text="3連勝以上：勝者だけ連勝ボーナス。上限は1.5倍" />
-          <Spec text="ガチマッチ：1on1で両者1700超えなら変動1.2倍" />
+          <Spec text="VIPマッチ：1on1で両者1700超えなら変動1.2倍" />
           <Spec text="変動上限：個人戦±100、チーム戦±50。ただしジャイアントキリング補正は上限突破" />
           <Spec text="ジャイアントキリング：1on1でレート差200以上の低レート側勝利時、レート変動が激しくなる。" />
           <Spec text="ランキング：Tier以上表示・Tierごとの絞り込みに対応" />
-          <Spec text="ランダムマッチ：Tier選択→セット複数選択→1on1を自動作成。レート変動が少し大きくなります" />
+          <Spec text="ランダムマッチ：Tier選択→セット複数選択→1on1を自動作成。両者1700超えならランダムVIPマッチ表示になります" />
           <Spec text="ランキング：プレイヤー名・キャラ名クリックでレート推移グラフ表示" />
           <Spec text="プレイヤー総合：3キャラ以上登録しているプレイヤーのみ表示。" />
           <Spec text="ランク：Master 2000+ / Diamond 1900+ / Ruby 1800+ / Sapphire 1700+ / Platinum 1600+ / Gold 1550+ / Silver 1450+ / Bronze 1400+ / Iron 1400以下" />
