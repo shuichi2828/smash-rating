@@ -177,6 +177,7 @@ function appMatchFromDb(row, members) {
   const teamB = members
     .filter(member => member.team === "B")
     .map(member => ({ playerId: member.playerId, characterName: member.characterName }));
+  const storedAvgA = Number(row.avg_a || 0);
 
   return {
     id: row.id,
@@ -188,9 +189,9 @@ function appMatchFromDb(row, members) {
     scoreB: row.score_b,
     winnerTeam: row.winner_team,
     members,
-    avgA: Number(row.avg_a || 0),
+    avgA: Math.abs(storedAvgA),
     avgB: Number(row.avg_b || 0),
-    isRandomMatch: Boolean(row.is_random_match),
+    isRandomMatch: Boolean(row.is_random_match) || storedAvgA < 0,
     createdAt: row.created_at
   };
 }
@@ -229,9 +230,8 @@ function dbMatchFromApp(match) {
     score_a: match.scoreA,
     score_b: match.scoreB,
     winner_team: match.winnerTeam,
-    avg_a: match.avgA,
+    avg_a: match.isRandomMatch ? -Math.abs(Number(match.avgA || 0)) : match.avgA,
     avg_b: match.avgB,
-    ...(match.isRandomMatch ? { is_random_match: true } : {}),
     created_at: match.createdAt || new Date().toISOString()
   };
 }
@@ -291,18 +291,54 @@ async function insertRows(tableName, rows) {
   if (error) throw error;
 }
 
+async function upsertRows(tableName, rows) {
+  if (!rows.length) return;
+  const { error } = await supabase.from(tableName).upsert(rows, { onConflict: "id" });
+  if (error) throw error;
+}
+
+async function deleteRowsNotIn(tableName, ids) {
+  if (!ids.length) {
+    await deleteAllRows(tableName);
+    return;
+  }
+
+  const keepIds = new Set(ids);
+  const { data, error: selectError } = await supabase
+    .from(tableName)
+    .select("id");
+
+  if (selectError) throw selectError;
+
+  const staleIds = (data || [])
+    .map(row => row.id)
+    .filter(id => !keepIds.has(id));
+
+  if (!staleIds.length) return;
+
+  const { error } = await supabase
+    .from(tableName)
+    .delete()
+    .in("id", staleIds);
+
+  if (error) throw error;
+}
+
 async function syncAllDataToSupabase(data) {
-  await deleteAllRows("match_members");
-  await deleteAllRows("matches");
-  await deleteAllRows("character_ratings");
-  await deleteAllRows("players");
-
-  await insertRows("players", data.players.map(dbPlayerFromApp));
-  await insertRows("character_ratings", data.ratings.map(dbRatingFromApp));
-  await insertRows("matches", data.matches.map(dbMatchFromApp));
-
+  const playerRows = data.players.map(dbPlayerFromApp);
+  const ratingRows = data.ratings.map(dbRatingFromApp);
+  const matchRows = data.matches.map(dbMatchFromApp);
   const memberRows = data.matches.flatMap(match => match.members.map(member => dbMemberFromApp(member, match.id)));
-  await insertRows("match_members", memberRows);
+
+  await upsertRows("players", playerRows);
+  await upsertRows("character_ratings", ratingRows);
+  await upsertRows("matches", matchRows);
+  await upsertRows("match_members", memberRows);
+
+  await deleteRowsNotIn("match_members", memberRows.map(row => row.id));
+  await deleteRowsNotIn("matches", matchRows.map(row => row.id));
+  await deleteRowsNotIn("character_ratings", ratingRows.map(row => row.id));
+  await deleteRowsNotIn("players", playerRows.map(row => row.id));
 }
 
 async function deleteSingleMatchFromSupabase(matchId) {
@@ -1604,6 +1640,7 @@ function MatchInput({ data, commit, saving }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [inputLocked, setInputLocked] = useState(false);
   const [lastResult, setLastResult] = useState(null);
+  const [completedMatchId, setCompletedMatchId] = useState("");
   const [randomMatchTierSelection, setRandomMatchTierSelection] = useState([]);
   const [randomMatchSelectedKeys, setRandomMatchSelectedKeys] = useState([]);
   const [isRandomMatch, setIsRandomMatch] = useState(false);
@@ -1781,9 +1818,12 @@ function MatchInput({ data, commit, saving }) {
     try {
       const next = applyMatch(data, form);
       const newMatch = next.matches[0];
+      setLastResult(newMatch);
+      setCompletedMatchId(newMatch.id);
+      setInputLocked(true);
       await commit(next);
       setLastResult(newMatch);
-      setInputLocked(true);
+      setCompletedMatchId(newMatch.id);
     } catch (error) {
       console.error(error);
       alert(error.message || "試合結果の反映に失敗しました。選手とキャラを選び直してください。");
@@ -1795,8 +1835,15 @@ function MatchInput({ data, commit, saving }) {
   function startNextMatch() {
     setInputLocked(false);
     setLastResult(null);
+    setCompletedMatchId("");
     setIsRandomMatch(false);
   }
+
+  const completedMatchFromData = completedMatchId
+    ? data.matches.find(match => match.id === completedMatchId)
+    : null;
+  const shownResult = lastResult || completedMatchFromData || (inputLocked ? data.matches[0] : null);
+  const shownResultMembers = Array.isArray(shownResult?.members) ? shownResult.members : [];
 
   return (
     <div className="grid gap-5 lg:grid-cols-3">
@@ -1968,24 +2015,24 @@ function MatchInput({ data, commit, saving }) {
           <Medal className="h-5 w-5" />
           <h3 className="text-xl font-black text-slate-950">今回のレート変動</h3>
         </div>
-        {!lastResult ? (
+        {!shownResult ? (
           <div className="mt-4 rounded-3xl border border-dashed border-blue-200 bg-blue-50/70 p-5 text-sm font-medium text-slate-500">試合結果を確定すると、ここに増減が表示されます。</div>
         ) : (
           <div className="mt-4 space-y-3">
-            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-700">{lastResult.isRandomMatch ? "ランダムマッチ / " : ""}{getMatchRuleLabel(inferRuleFromMatch(lastResult))} / {lastResult.mode} / Team {lastResult.winnerTeam} 勝利 / {lastResult.scoreA}-{lastResult.scoreB}</div>
-            {lastResult.isRandomMatch && (
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-700">{shownResult.isRandomMatch ? "ランダムマッチ / " : ""}{getMatchRuleLabel(inferRuleFromMatch(shownResult))} / {shownResult.mode} / Team {shownResult.winnerTeam} 勝利 / {shownResult.scoreA}-{shownResult.scoreB}</div>
+            {shownResult.isRandomMatch && (
               <div className="rounded-3xl border border-indigo-200 bg-indigo-50 p-4 text-sm font-black text-indigo-700 shadow-sm">
                  ランダムマッチ
               </div>
             )}
-            {getGiantKillingFromMatch(lastResult) && (
+            {getGiantKillingFromMatch(shownResult) && (
               <div className="rounded-3xl border border-yellow-300 bg-yellow-50 p-4 text-sm font-black text-yellow-800 shadow-sm">
-                ⚔️ ジャイアントキリング！ レート差{getGiantKillingFromMatch(lastResult).ratingDiff}。補正値{getGiantKillingFromMatch(lastResult).bonus}を勝者にプラス、敗者にマイナスしました。
+                ⚔️ ジャイアントキリング！ レート差{getGiantKillingFromMatch(shownResult).ratingDiff}。補正値{getGiantKillingFromMatch(shownResult).bonus}を勝者にプラス、敗者にマイナスしました。
               </div>
             )}
-            {lastResult.milestoneMessages?.length > 0 && (
+            {shownResult.milestoneMessages?.length > 0 && (
               <div className="space-y-2">
-                {lastResult.milestoneMessages.map(item => (
+                {shownResult.milestoneMessages.map(item => (
                   <div key={item.id} className="rounded-3xl border border-yellow-200 bg-yellow-50 p-4 text-sm font-black text-yellow-800 shadow-sm">
                     <div className="flex flex-wrap items-start gap-2">
                       <span>🎉</span>
@@ -1996,7 +2043,7 @@ function MatchInput({ data, commit, saving }) {
                 ))}
               </div>
             )}
-            {lastResult.members.map(member => (
+            {shownResultMembers.map(member => (
               <div key={member.id} className="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -2013,9 +2060,14 @@ function MatchInput({ data, commit, saving }) {
                 </div>
               </div>
             ))}
+            {shownResultMembers.length === 0 && (
+              <div className="rounded-3xl border border-red-200 bg-red-50 p-4 text-sm font-black text-red-600">
+                レート変動データを取得できませんでした。Supabaseから再読み込みしてください。
+              </div>
+            )}
             <div className="flex items-center justify-between rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold">
               <span className="text-slate-600">合計増減</span>
-              <ChangeBadge change={lastResult.members.reduce((sum, member) => sum + member.ratingChange, 0)} />
+              <ChangeBadge change={shownResultMembers.reduce((sum, member) => sum + member.ratingChange, 0)} />
             </div>
             <button onClick={startNextMatch} className="w-full rounded-2xl bg-slate-950 p-3 font-black text-white transition hover:bg-blue-950">次の試合を入力する</button>
           </div>
