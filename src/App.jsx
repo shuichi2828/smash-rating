@@ -107,7 +107,8 @@ function createRating(playerId, characterName) {
     wins: 0,
     losses: 0,
     winStreak: 0,
-    highestRating: INITIAL_RATING
+    highestRating: INITIAL_RATING,
+    baseRating: INITIAL_RATING
   };
 }
 
@@ -153,7 +154,8 @@ function appRatingFromDb(row) {
     wins: row.wins,
     losses: row.losses,
     winStreak: row.win_streak || 0,
-    highestRating: row.highest_rating
+    highestRating: row.highest_rating,
+    baseRating: row.base_rating ?? INITIAL_RATING
   };
 }
 
@@ -218,7 +220,8 @@ function dbRatingFromApp(rating) {
     wins: rating.wins,
     losses: rating.losses,
     win_streak: rating.winStreak || 0,
-    highest_rating: rating.highestRating
+    highest_rating: rating.highestRating,
+    base_rating: rating.baseRating ?? INITIAL_RATING
   };
 }
 
@@ -930,7 +933,7 @@ function isRandomGachiMatch(match) {
 
 function getRandomMatchLabel(match) {
   if (!match?.isRandomMatch) return "";
-  return isRandomGachiMatch(match) ? "ランダムVIPマッチ" : "ランダムマッチ";
+  return isRandomGachiMatch(match) ? "ランダムガチマッチ" : "ランダムマッチ";
 }
 
 function getRandomMatchBadgeClass(match) {
@@ -1267,14 +1270,17 @@ function applyMatch(data, form) {
 }
 
 function resetRatingStats(rating) {
+  const baseRating = rating.baseRating ?? INITIAL_RATING;
+
   return {
     ...rating,
-    rating: INITIAL_RATING,
+    rating: baseRating,
     matches: 0,
     wins: 0,
     losses: 0,
     winStreak: 0,
-    highestRating: INITIAL_RATING
+    highestRating: Math.max(rating.highestRating ?? baseRating, baseRating),
+    baseRating
   };
 }
 
@@ -1967,7 +1973,7 @@ function MatchInput({ data, commit, saving }) {
                     : "border-yellow-300 bg-yellow-50 text-yellow-800"
                 )}
               >
-                 {isRandomGachiPreview ? "ランダムVIPマッチ" : "ランダムマッチ"}
+                 {isRandomGachiPreview ? "ランダムガチマッチ" : "ランダムマッチ"}
               </motion.div>
             )}
           </AnimatePresence>
@@ -1979,7 +1985,7 @@ function MatchInput({ data, commit, saving }) {
                 ? "border-red-700 bg-black text-red-500 shadow-sm shadow-red-200"
                 : "border-yellow-300 bg-yellow-50 text-yellow-800"
             )}>
-              この試合は{isRandomGachiPreview ? "ランダムVIPマッチ" : "ランダムマッチ"}です。
+              この試合は{isRandomGachiPreview ? "ランダムガチマッチ" : "ランダムマッチ"}です。
             </div>
           )}
         </div>
@@ -2001,7 +2007,7 @@ function MatchInput({ data, commit, saving }) {
                     : "border-blue-200 bg-white text-blue-600"
               )}
             >
-              {isRandomGachiPreview ? "ランダムVIPマッチ VS" : isRandomMatch ? "ランダムマッチ VS" : isGiantKillingPreview ? "ジャイアントキリング対象 VS" : isGachiPreview ? "VIPマッチ VS" : "VS"}
+              {isRandomGachiPreview ? "ランダムガチマッチ VS" : isRandomMatch ? "ランダムマッチ VS" : isGiantKillingPreview ? "ジャイアントキリング対象 VS" : isGachiPreview ? "ガチマッチ VS" : "VS"}
             </div>
           </div>
           <TeamCard title="Team B" team="B" members={activeB} updateMember={updateMember} data={data} registeredSets={registeredSets} disabled={inputLocked} active={winnerTeam === "B"} />
@@ -2523,11 +2529,11 @@ function Stats({ data, ranking, refreshData, saving }) {
           <Spec text="敗北：必ずマイナス" />
           <Spec text="2-0勝利：2勝制のみ変動1.1倍" />
           <Spec text="3連勝以上：勝者だけ連勝ボーナス。上限は1.5倍" />
-          <Spec text="VIPマッチ：1on1で両者1700超えなら変動1.2倍" />
+          <Spec text="ガチマッチ：1on1で両者1700超えなら変動1.2倍" />
           <Spec text="変動上限：個人戦±100、チーム戦±50。ただしジャイアントキリング補正は上限突破" />
           <Spec text="ジャイアントキリング：1on1でレート差200以上の低レート側勝利時、レート変動が激しくなる。" />
           <Spec text="ランキング：Tier以上表示・Tierごとの絞り込みに対応" />
-          <Spec text="ランダムマッチ：Tier選択→セット複数選択→1on1を自動作成。両者1700超えならランダムVIPマッチ表示になります" />
+          <Spec text="ランダムマッチ：Tier選択→セット複数選択→1on1を自動作成。両者1700超えならランダムガチマッチ表示になります" />
           <Spec text="ランキング：プレイヤー名・キャラ名クリックでレート推移グラフ表示" />
           <Spec text="プレイヤー総合：3キャラ以上登録しているプレイヤーのみ表示。" />
           <Spec text="ランク：Master 2000+ / Diamond 1900+ / Ruby 1800+ / Sapphire 1700+ / Platinum 1600+ / Gold 1550+ / Silver 1450+ / Bronze 1400+ / Iron 1400以下" />
