@@ -24,6 +24,10 @@ const WIN_BONUS = 10;
 const LOSS_FACTOR = 1.0;
 const GIANT_KILLING_RATING_DIFF = 200;
 const GIANT_KILLING_BONUS_MULTIPLIER = 0.2;
+const RANDOM_MATCH_RATE_MULTIPLIER = 1.1;
+const LOSING_STREAK_MIN_COUNT = 2;
+const LOSING_STREAK_PENALTY_PER_LOSS = 3;
+const MIN_TOTAL_CHANGE_AFTER_LOSING_STREAK = 3;
 const TIER_MESSAGE_EXCLUDED_PLAYER_NAMES = ["しゅー"];
 
 const characters = [
@@ -186,6 +190,7 @@ function appMatchFromDb(row, members) {
     members,
     avgA: Number(row.avg_a || 0),
     avgB: Number(row.avg_b || 0),
+    isRandomMatch: Boolean(row.is_random_match),
     createdAt: row.created_at
   };
 }
@@ -226,6 +231,7 @@ function dbMatchFromApp(match) {
     winner_team: match.winnerTeam,
     avg_a: match.avgA,
     avg_b: match.avgB,
+    ...(match.isRandomMatch ? { is_random_match: true } : {}),
     created_at: match.createdAt || new Date().toISOString()
   };
 }
@@ -345,6 +351,35 @@ function getTier(rating) {
   if (rating >= 1200) return "C";
   if (rating <= 1000) return "E";
   return "D";
+}
+
+const TIER_FILTER_OPTIONS = [
+  { value: "all", label: "すべて", threshold: null },
+  { value: "SSS", label: "Tier SSS", threshold: 2200 },
+  { value: "SS", label: "Tier SS", threshold: 2000 },
+  { value: "S", label: "Tier S", threshold: 1800 },
+  { value: "A", label: "Tier A", threshold: 1600 },
+  { value: "B", label: "Tier B", threshold: 1400 },
+  { value: "C", label: "Tier C", threshold: 1200 },
+  { value: "D", label: "Tier D", threshold: 1001 },
+  { value: "E", label: "Tier E", threshold: -Infinity }
+];
+
+const RANDOM_MATCH_TIER_OPTIONS = TIER_FILTER_OPTIONS.filter(option => option.value !== "all");
+
+function getTierThreshold(tier) {
+  return TIER_FILTER_OPTIONS.find(option => option.value === tier)?.threshold ?? null;
+}
+
+function isRatingAtLeastTier(rating, tier) {
+  if (tier === "all") return true;
+  const threshold = getTierThreshold(tier);
+  return threshold === null ? true : rating >= threshold;
+}
+
+function isRatingExactTier(rating, tier) {
+  if (tier === "all") return true;
+  return getTier(rating) === tier;
 }
 
 function getTierMilestones(rating) {
@@ -855,6 +890,22 @@ function getRatingForMember(data, member) {
   return data.ratings.find(r => r.key === ratingKey(member.playerId, member.characterName)) || null;
 }
 
+function getCurrentLossStreak(data, playerId, characterName) {
+  let streak = 0;
+
+  for (const match of data.matches) {
+    const member = match.members.find(
+      item => item.playerId === playerId && item.characterName === characterName
+    );
+
+    if (!member) continue;
+    if (member.won) break;
+    streak += 1;
+  }
+
+  return streak;
+}
+
 function getUniqueDefaultMembers(registeredSets) {
   const seen = new Set();
   return registeredSets
@@ -889,7 +940,7 @@ function roundChange(value) {
   return Math.round(value);
 }
 
-function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam, scoreA, scoreB }) {
+function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam, scoreA, scoreB, isRandomMatch = false }) {
   const ratingsMap = new Map(data.ratings.map(r => [r.key, { ...r }]));
 
   const fullA = teamA.map(m => {
@@ -920,6 +971,7 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
   const mult = scoreMultiplier(aWon ? scoreA : scoreB, aWon ? scoreB : scoreA);
   const rawMembers = [];
   const ruleFactor = rule === "single" ? 0.5 : 1;
+  const randomMatchFactor = isRandomMatch ? RANDOM_MATCH_RATE_MULTIPLIER : 1;
   const maxAbsChange = mode === "2v2" ? 50 : 100;
 
   const isGachiMatch =
@@ -934,6 +986,8 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
     const before = member.ratingRecord.rating;
     const currentStreak = member.ratingRecord.winStreak || 0;
     const nextStreak = won ? currentStreak + 1 : 0;
+    const currentLossStreak = getCurrentLossStreak(data, member.playerId, member.characterName);
+    const nextLossStreak = won ? 0 : currentLossStreak + 1;
     const k = getK(member.ratingRecord.matches);
     const baseAbs = Math.abs(k * ((won ? 1 : 0) - expected) * mult);
 
@@ -947,7 +1001,8 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
           gachiFactor *
           lowAverageFactor *
           streakBonus *
-          RATE_GLOBAL_MULTIPLIER
+          RATE_GLOBAL_MULTIPLIER *
+          randomMatchFactor
       );
       change = Math.max(1, change);
     } else {
@@ -958,7 +1013,8 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
           ruleFactor *
           gachiFactor *
           lowAverageFactor *
-          RATE_GLOBAL_MULTIPLIER
+          RATE_GLOBAL_MULTIPLIER *
+          randomMatchFactor
       );
       change = Math.min(-1, change);
     }
@@ -974,6 +1030,9 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
       ratingChange: change,
       winStreakBefore: currentStreak,
       winStreakAfter: nextStreak,
+      lossStreakBefore: currentLossStreak,
+      lossStreakAfter: nextLossStreak,
+      losingStreakPenalty: 0,
       won
     });
   }
@@ -1027,6 +1086,25 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
         member.ratingChange -= giantKilling.bonus;
       }
     }
+  }
+
+  let totalChangeAfterBonus = rawMembers.reduce((sum, member) => sum + member.ratingChange, 0);
+  const losingStreakMembers = rawMembers.filter(
+    member => !member.won && member.lossStreakAfter >= LOSING_STREAK_MIN_COUNT
+  );
+
+  for (const member of losingStreakMembers) {
+    const availablePenalty = totalChangeAfterBonus - MIN_TOTAL_CHANGE_AFTER_LOSING_STREAK;
+    if (availablePenalty <= 0) break;
+
+    const requestedPenalty = (member.lossStreakAfter - 1) * LOSING_STREAK_PENALTY_PER_LOSS;
+    const actualPenalty = Math.min(requestedPenalty, availablePenalty);
+
+    if (actualPenalty <= 0) continue;
+
+    member.ratingChange -= actualPenalty;
+    member.losingStreakPenalty = actualPenalty;
+    totalChangeAfterBonus -= actualPenalty;
   }
 
   const members = rawMembers.map(member => ({
@@ -1112,6 +1190,7 @@ function applyMatch(data, form) {
     isGachiMatch: calculation.isGachiMatch,
     lowAverageBonus: calculation.lowAverageBonus,
     giantKilling: calculation.giantKilling,
+    isRandomMatch: Boolean(form.isRandomMatch),
     members: calculation.members,
     milestoneMessages,
     avgA: calculation.avgA,
@@ -1151,7 +1230,8 @@ function rebuildDataWithMatches(data, matchesNewestFirst) {
       teamB: oldMatch.teamB,
       scoreA: oldMatch.scoreA,
       scoreB: oldMatch.scoreB,
-      winnerTeam: oldMatch.winnerTeam
+      winnerTeam: oldMatch.winnerTeam,
+      isRandomMatch: Boolean(oldMatch.isRandomMatch)
     };
 
     const next = applyMatch(rebuilt, form);
@@ -1159,6 +1239,7 @@ function rebuildDataWithMatches(data, matchesNewestFirst) {
       ...next.matches[0],
       id: oldMatch.id,
       rule: inferRuleFromMatch(oldMatch),
+      isRandomMatch: Boolean(oldMatch.isRandomMatch),
       createdAt: oldMatch.createdAt
     };
 
@@ -1523,6 +1604,10 @@ function MatchInput({ data, commit, saving }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [inputLocked, setInputLocked] = useState(false);
   const [lastResult, setLastResult] = useState(null);
+  const [randomMatchTierSelection, setRandomMatchTierSelection] = useState([]);
+  const [randomMatchSelectedKeys, setRandomMatchSelectedKeys] = useState([]);
+  const [isRandomMatch, setIsRandomMatch] = useState(false);
+  const [randomMatchEffect, setRandomMatchEffect] = useState(false);
 
   const activeA = mode === "1v1" ? teamA.slice(0, 1) : teamA;
   const activeB = mode === "1v1" ? teamB.slice(0, 1) : teamB;
@@ -1530,7 +1615,7 @@ function MatchInput({ data, commit, saving }) {
   const realScoreA = winnerTeam === "A" ? scoreA : scoreB;
   const realScoreB = winnerTeam === "A" ? scoreB : scoreA;
 
-  const form = { mode, rule, teamA: activeA, teamB: activeB, winnerTeam, scoreA: realScoreA, scoreB: realScoreB };
+  const form = { mode, rule, teamA: activeA, teamB: activeB, winnerTeam, scoreA: realScoreA, scoreB: realScoreB, isRandomMatch };
   const requiredSets = mode === "1v1" ? 2 : 4;
   const uniqueSelectablePlayerCount = new Set(registeredSets.map(r => r.playerId)).size;
   const hasEnoughSets = uniqueSelectablePlayerCount >= requiredSets;
@@ -1564,6 +1649,14 @@ function MatchInput({ data, commit, saving }) {
     ratingDiffPreview >= GIANT_KILLING_RATING_DIFF &&
     winnerTeam === lowerTeamPreview;
 
+  const randomMatchEligibleSets = registeredSets.filter(rating =>
+    randomMatchTierSelection.includes(getTier(rating.rating))
+  );
+  const randomMatchSelectableKeys = new Set(randomMatchEligibleSets.map(rating => rating.key));
+  const randomMatchSelectedSets = randomMatchEligibleSets.filter(rating =>
+    randomMatchSelectedKeys.includes(rating.key)
+  );
+
   useEffect(() => {
     setScore(rule === "single" ? "1-0" : "2-1");
   }, [rule]);
@@ -1588,14 +1681,79 @@ function MatchInput({ data, commit, saving }) {
     ]);
   }, [registeredSets.length, mode]);
 
+  useEffect(() => {
+    setRandomMatchSelectedKeys(current => current.filter(key => randomMatchSelectableKeys.has(key)));
+  }, [randomMatchTierSelection.join("|"), registeredSets.length]);
+
   function updateMember(team, index, patch) {
     const setter = team === "A" ? setTeamA : setTeamB;
     const current = team === "A" ? teamA : teamB;
     setter(current.map((m, i) => i === index ? { ...m, ...patch } : m));
+    if (isRandomMatch) setIsRandomMatch(false);
+  }
+
+  function toggleRandomMatchTier(tier) {
+    setRandomMatchTierSelection(current =>
+      current.includes(tier) ? current.filter(item => item !== tier) : [...current, tier]
+    );
+  }
+
+  function toggleRandomMatchSet(key) {
+    setRandomMatchSelectedKeys(current =>
+      current.includes(key) ? current.filter(item => item !== key) : [...current, key]
+    );
+  }
+
+  function selectAllRandomMatchSets() {
+    setRandomMatchSelectedKeys(randomMatchEligibleSets.map(rating => rating.key));
+  }
+
+  function cancelRandomMatch() {
+    setIsRandomMatch(false);
+    setRandomMatchEffect(false);
+    setRandomMatchSelectedKeys([]);
+  }
+
+  function createRandomMatch() {
+    const possiblePairs = [];
+
+    for (let i = 0; i < randomMatchSelectedSets.length; i += 1) {
+      for (let j = i + 1; j < randomMatchSelectedSets.length; j += 1) {
+        const a = randomMatchSelectedSets[i];
+        const b = randomMatchSelectedSets[j];
+        if (a.playerId === b.playerId) continue;
+        possiblePairs.push([a, b]);
+      }
+    }
+
+    if (!possiblePairs.length) {
+      return alert("同じプレイヤー同士を避けるため、別プレイヤーのセットを2つ以上選択してください。");
+    }
+
+    const [first, second] = possiblePairs[Math.floor(Math.random() * possiblePairs.length)];
+
+    setMode("1v1");
+    setRule("single");
+    setScore("1-0");
+    setWinnerTeam("A");
+    setTeamA(current => [
+      { playerId: first.playerId, characterName: first.characterName },
+      current[1] || { playerId: "", characterName: "" }
+    ]);
+    setTeamB(current => [
+      { playerId: second.playerId, characterName: second.characterName },
+      current[1] || { playerId: "", characterName: "" }
+    ]);
+    setInputLocked(false);
+    setLastResult(null);
+    setIsRandomMatch(true);
+    setRandomMatchEffect(true);
+    window.setTimeout(() => setRandomMatchEffect(false), 1600);
   }
 
   async function submit() {
     if (isSubmitting || inputLocked || saving) return;
+    if (isRandomMatch && mode !== "1v1") return alert("ランダムマッチは1on1のみです。");
     if (!hasEnoughSets) {
       return alert(
         `${mode === "2v2"
@@ -1637,6 +1795,7 @@ function MatchInput({ data, commit, saving }) {
   function startNextMatch() {
     setInputLocked(false);
     setLastResult(null);
+    setIsRandomMatch(false);
   }
 
   return (
@@ -1655,15 +1814,87 @@ function MatchInput({ data, commit, saving }) {
           <div className="grid gap-2 md:grid-cols-2">
             <div className="grid grid-cols-2 gap-2 rounded-2xl border border-blue-100 bg-blue-50 p-1.5">
               {[["single", "1勝制"], ["bo3", "2勝制"]].map(([value, label]) => (
-                <button key={value} onClick={() => setRule(value)} disabled={inputLocked} className={classNames("rounded-xl px-4 py-2 text-sm font-black transition disabled:opacity-50", rule === value ? "bg-blue-600 text-white shadow" : "text-blue-700 hover:bg-white")}>{label}</button>
+                <button key={value} onClick={() => { setRule(value); if (isRandomMatch) setIsRandomMatch(false); }} disabled={inputLocked} className={classNames("rounded-xl px-4 py-2 text-sm font-black transition disabled:opacity-50", rule === value ? "bg-blue-600 text-white shadow" : "text-blue-700 hover:bg-white")}>{label}</button>
               ))}
             </div>
             <div className="grid grid-cols-2 gap-2 rounded-2xl border border-blue-100 bg-blue-50 p-1.5">
               {[["1v1", "1on1"], ["2v2", "2on2"]].map(([value, label]) => (
-                <button key={value} onClick={() => setMode(value)} disabled={inputLocked} className={classNames("rounded-xl px-4 py-2 text-sm font-black transition disabled:opacity-50", mode === value ? "bg-blue-600 text-white shadow" : "text-blue-700 hover:bg-white")}>{label}</button>
+                <button key={value} onClick={() => { setMode(value); if (isRandomMatch) setIsRandomMatch(false); }} disabled={inputLocked} className={classNames("rounded-xl px-4 py-2 text-sm font-black transition disabled:opacity-50", mode === value ? "bg-blue-600 text-white shadow" : "text-blue-700 hover:bg-white")}>{label}</button>
               ))}
             </div>
           </div>
+        </div>
+
+        <div className="rounded-3xl border border-indigo-100 bg-indigo-50/50 p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="text-sm font-black text-indigo-700">ランダムマッチ作成</div>
+              <p className="mt-1 text-xs font-bold text-slate-500">Tierを選択して、セットをチェックしてください。1on1のみ、レート変動が少し大きくなります。</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={selectAllRandomMatchSets} disabled={!randomMatchEligibleSets.length || inputLocked} className="rounded-2xl bg-indigo-600 px-3 py-2 text-xs font-black text-white transition hover:bg-indigo-700 disabled:bg-slate-300">全て選択</button>
+              <button type="button" onClick={() => setRandomMatchSelectedKeys([])} disabled={inputLocked} className="rounded-2xl border border-indigo-200 bg-white px-3 py-2 text-xs font-black text-indigo-700 transition hover:bg-indigo-50 disabled:opacity-40">選択解除</button>
+              <button type="button" onClick={cancelRandomMatch} disabled={inputLocked} className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition hover:bg-slate-50 disabled:opacity-40">キャンセル</button>
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {RANDOM_MATCH_TIER_OPTIONS.map(option => (
+              <label key={option.value} className={classNames("flex cursor-pointer items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-black transition", randomMatchTierSelection.includes(option.value) ? "border-indigo-500 bg-indigo-600 text-white" : "border-indigo-100 bg-white text-indigo-700 hover:bg-indigo-50")}>
+                <input type="checkbox" checked={randomMatchTierSelection.includes(option.value)} onChange={() => toggleRandomMatchTier(option.value)} disabled={inputLocked} className="accent-indigo-600" />
+                {option.label}
+              </label>
+            ))}
+          </div>
+
+          <div className="mt-3 max-h-56 space-y-2 overflow-auto rounded-3xl border border-indigo-100 bg-white p-3">
+            {randomMatchEligibleSets.map(rating => {
+              const player = data.players.find(p => p.id === rating.playerId);
+              return (
+                <label key={rating.key} className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 px-3 py-2 transition hover:bg-blue-50">
+                  <div className="flex items-center gap-2">
+                    <input type="checkbox" checked={randomMatchSelectedKeys.includes(rating.key)} onChange={() => toggleRandomMatchSet(rating.key)} disabled={inputLocked} className="accent-indigo-600" />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-start gap-2 text-sm font-black text-slate-800">
+                        <PlayerIdentity data={data} playerId={rating.playerId} name={player?.name || "不明"} rating={rating.rating} />
+                        <span className="pt-1">/ {rating.characterName}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <TierBadge rating={rating.rating} />
+                    <span className={`text-sm font-black ${getTierTextColor(rating.rating)}`}>{rating.rating}</span>
+                  </div>
+                </label>
+              );
+            })}
+            {!randomMatchTierSelection.length && <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50 p-4 text-center text-sm font-bold text-indigo-400">先にTierを選択してください。</div>}
+            {randomMatchTierSelection.length > 0 && !randomMatchEligibleSets.length && <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50 p-4 text-center text-sm font-bold text-indigo-400">対象セットがありません。</div>}
+          </div>
+
+          <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div className="text-xs font-bold text-slate-500">選択中：{randomMatchSelectedSets.length}セット</div>
+            <button type="button" onClick={createRandomMatch} disabled={inputLocked || randomMatchSelectedSets.length < 2} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white transition hover:bg-indigo-950 disabled:bg-slate-300">ランダムに1on1を組む</button>
+          </div>
+
+          <AnimatePresence>
+            {randomMatchEffect && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                className="mt-3 rounded-3xl border border-yellow-300 bg-yellow-50 p-4 text-center text-xl font-black text-yellow-800 shadow-sm"
+              >
+                 ランダムマッチ
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {isRandomMatch && (
+            <div className="mt-3 rounded-2xl border border-yellow-300 bg-yellow-50 px-3 py-2 text-sm font-black text-yellow-800">
+              この試合はランダムマッチです。
+            </div>
+          )}
         </div>
 
         <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-stretch">
@@ -1672,14 +1903,16 @@ function MatchInput({ data, commit, saving }) {
             <div
               className={classNames(
                 "rounded-full border px-4 py-2 text-xl font-black shadow-sm transition",
-                isGiantKillingPreview
-                  ? "border-yellow-300 bg-yellow-400 text-slate-950 shadow-yellow-200"
-                  : isGachiPreview
+                isRandomMatch
+                  ? "border-indigo-300 bg-indigo-600 text-white shadow-indigo-200"
+                  : isGiantKillingPreview
+                    ? "border-yellow-300 bg-yellow-400 text-slate-950 shadow-yellow-200"
+                    : isGachiPreview
                     ? "border-red-300 bg-red-600 text-white shadow-red-200"
                     : "border-blue-200 bg-white text-blue-600"
               )}
             >
-              {isGiantKillingPreview ? "ジャイアントキリング対象 VS" : isGachiPreview ? "ガチマッチ VS" : "VS"}
+              {isRandomMatch ? "ランダムマッチ VS" : isGiantKillingPreview ? "ジャイアントキリング対象 VS" : isGachiPreview ? "ガチマッチ VS" : "VS"}
             </div>
           </div>
           <TeamCard title="Team B" team="B" members={activeB} updateMember={updateMember} data={data} registeredSets={registeredSets} disabled={inputLocked} active={winnerTeam === "B"} />
@@ -1739,7 +1972,12 @@ function MatchInput({ data, commit, saving }) {
           <div className="mt-4 rounded-3xl border border-dashed border-blue-200 bg-blue-50/70 p-5 text-sm font-medium text-slate-500">試合結果を確定すると、ここに増減が表示されます。</div>
         ) : (
           <div className="mt-4 space-y-3">
-            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-700">{getMatchRuleLabel(inferRuleFromMatch(lastResult))} / {lastResult.mode} / Team {lastResult.winnerTeam} 勝利 / {lastResult.scoreA}-{lastResult.scoreB}</div>
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-700">{lastResult.isRandomMatch ? "ランダムマッチ / " : ""}{getMatchRuleLabel(inferRuleFromMatch(lastResult))} / {lastResult.mode} / Team {lastResult.winnerTeam} 勝利 / {lastResult.scoreA}-{lastResult.scoreB}</div>
+            {lastResult.isRandomMatch && (
+              <div className="rounded-3xl border border-indigo-200 bg-indigo-50 p-4 text-sm font-black text-indigo-700 shadow-sm">
+                 ランダムマッチ
+              </div>
+            )}
             {getGiantKillingFromMatch(lastResult) && (
               <div className="rounded-3xl border border-yellow-300 bg-yellow-50 p-4 text-sm font-black text-yellow-800 shadow-sm">
                 ⚔️ ジャイアントキリング！ レート差{getGiantKillingFromMatch(lastResult).ratingDiff}。補正値{getGiantKillingFromMatch(lastResult).bonus}を勝者にプラス、敗者にマイナスしました。
@@ -1767,6 +2005,9 @@ function MatchInput({ data, commit, saving }) {
                       <span className="pt-1">/ {member.characterName}</span>
                     </div>
                     <div className="mt-1 flex items-center gap-2 text-xs font-bold text-slate-500">{member.ratingBefore} → {member.ratingAfter} <TierBadge rating={member.ratingAfter} /></div>
+                    {member.losingStreakPenalty > 0 && (
+                      <div className="mt-1 text-xs font-black text-red-500">連敗補正 -{member.losingStreakPenalty}</div>
+                    )}
                   </div>
                   <ChangeBadge change={member.ratingChange} />
                 </div>
@@ -1869,9 +2110,17 @@ function TeamCard({ title, team, members, updateMember, data, registeredSets, di
 function Ranking({ data, ranking, totalRanking }) {
   const maxRating = Math.max(2500, ...ranking.map(r => r.rating), ...totalRanking.map(r => r.avg));
   const [selectedRatingKey, setSelectedRatingKey] = useState("");
+  const [tierAtLeastFilter, setTierAtLeastFilter] = useState("all");
+  const [tierExactFilter, setTierExactFilter] = useState("all");
+  const filteredRanking = useMemo(() => {
+    return ranking.filter(rating =>
+      isRatingAtLeastTier(rating.rating, tierAtLeastFilter) &&
+      isRatingExactTier(rating.rating, tierExactFilter)
+    );
+  }, [ranking, tierAtLeastFilter, tierExactFilter]);
   const selectedRating = useMemo(() => {
-    return ranking.find(r => r.key === selectedRatingKey) || null;
-  }, [ranking, selectedRatingKey]);
+    return filteredRanking.find(r => r.key === selectedRatingKey) || null;
+  }, [filteredRanking, selectedRatingKey]);
 
   return (
     <div className="space-y-5">
@@ -1884,7 +2133,6 @@ function Ranking({ data, ranking, totalRanking }) {
               プレイヤー名・キャラ名をクリックすると、レート推移グラフを表示します。
             </p>
           </div>
-          <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700">Tier color enabled</div>
         </div>
 
         {selectedRating && (
@@ -1897,9 +2145,31 @@ function Ranking({ data, ranking, totalRanking }) {
           </div>
         )}
 
+        <div className="mt-5 rounded-3xl border border-blue-100 bg-blue-50/70 p-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-sm font-black text-slate-600">Tier以上で表示</span>
+              <select value={tierAtLeastFilter} onChange={e => setTierAtLeastFilter(e.target.value)} className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400">
+                {TIER_FILTER_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>{option.value === "all" ? "すべて" : `${option.label}以上`}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-black text-slate-600">Tierごとに絞る</span>
+              <select value={tierExactFilter} onChange={e => setTierExactFilter(e.target.value)} className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400">
+                {TIER_FILTER_OPTIONS.map(option => (
+                  <option key={option.value} value={option.value}>{option.value === "all" ? "すべて" : option.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="mt-3 text-xs font-bold text-slate-500">表示中：{filteredRanking.length}セット / 全{ranking.length}セット</div>
+        </div>
+
         <div className="mt-5 rounded-[1.75rem] border border-blue-100 bg-gradient-to-b from-blue-50 to-white p-4">
           <div className="space-y-3">
-            {ranking.map((r, i) => {
+            {filteredRanking.map((r, i) => {
               const pct = Math.max(6, Math.min(100, (r.rating / maxRating) * 100));
               const isSelected = selectedRatingKey === r.key;
               return (
@@ -1931,7 +2201,7 @@ function Ranking({ data, ranking, totalRanking }) {
                 </div>
               );
             })}
-            {!ranking.length && <div className="rounded-3xl border border-dashed border-blue-200 bg-white p-8 text-center font-bold text-slate-400">まだ登録セットがありません。</div>}
+            {!filteredRanking.length && <div className="rounded-3xl border border-dashed border-blue-200 bg-white p-8 text-center font-bold text-slate-400">条件に合う登録セットがありません。</div>}
           </div>
         </div>
       </AppShellCard>
@@ -2089,13 +2359,20 @@ function HistoryView({ data, deleteMatchOnly, saving }) {
             <div key={match.id} className="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <div className="font-black text-slate-950">{getMatchRuleLabel(inferRuleFromMatch(match))} / {match.mode} / Team {match.winnerTeam} 勝利 / {match.scoreA}-{match.scoreB}</div>
+                  <div className="font-black text-slate-950">{match.isRandomMatch ? "ランダムマッチ / " : ""}{getMatchRuleLabel(inferRuleFromMatch(match))} / {match.mode} / Team {match.winnerTeam} 勝利 / {match.scoreA}-{match.scoreB}</div>
                   <div className="mt-1 text-sm font-bold text-slate-400">{new Date(match.createdAt).toLocaleString()}</div>
-                  {giantKilling && (
-                    <div className="mt-2 inline-flex rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1 text-xs font-black text-yellow-800">
-                      ⚔️ ジャイアントキリング！ レート差{giantKilling.ratingDiff} / 補正{giantKilling.bonus}
-                    </div>
-                  )}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {match.isRandomMatch && (
+                      <div className="inline-flex rounded-full border border-indigo-300 bg-indigo-50 px-3 py-1 text-xs font-black text-indigo-700">
+                        ランダムマッチ
+                      </div>
+                    )}
+                    {giantKilling && (
+                      <div className="inline-flex rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1 text-xs font-black text-yellow-800">
+                        ⚔️ ジャイアントキリング！ レート差{giantKilling.ratingDiff} / 補正{giantKilling.bonus}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <button onClick={() => handleDeleteMatch(match.id)} disabled={saving} className="flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-black text-red-600 transition hover:bg-red-100 disabled:opacity-40">
                   <Trash2 className="h-4 w-4" />この試合を取り消す
@@ -2154,9 +2431,12 @@ function Stats({ data, ranking, refreshData, saving }) {
           <Spec text="3連勝以上：勝者だけ連勝ボーナス。上限は1.5倍" />
           <Spec text="ガチマッチ：1on1で両者1700超えなら変動1.2倍" />
           <Spec text="変動上限：個人戦±100、チーム戦±50。ただしジャイアントキリング補正は上限突破" />
-          <Spec text="ジャイアントキリング：1on1でレート差200以上の低レート側勝利時、レート差×0.2を切り捨てて勝者に加点・敗者に減点" />
+          <Spec text="ジャイアントキリング：1on1でレート差200以上の低レート側勝利時、レート変動が激しくなる。" />
+          <Spec text="ランキング：Tier以上表示・Tierごとの絞り込みに対応" />
+          <Spec text="ランダムマッチ：Tier選択→セット複数選択→1on1を自動作成。レート変動が少し大きくなります" />
           <Spec text="ランキング：プレイヤー名・キャラ名クリックでレート推移グラフ表示" />
-          <Spec text="プレイヤー総合：3キャラ以上登録しているプレイヤーのみ表示。登録全キャラの平均レートでMaster〜Ironランクを付与" />
+          <Spec text="プレイヤー総合：3キャラ以上登録しているプレイヤーのみ表示。" />
+          <Spec text="ランク：Master 2000+ / Diamond 1900+ / Ruby 1800+ / Sapphire 1700+ / Platinum 1600+ / Gold 1550+ / Silver 1450+ / Bronze 1400+ / Iron 1400以下" />
           <Spec text="ティア：SSS 2200+ / SS 2000+ / S 1800+ / A 1600+ / B 1400+ / C 1200+ / D 1001-1199 / E 1000以下" />
         </div>
       </AppShellCard>
