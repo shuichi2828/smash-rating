@@ -29,6 +29,37 @@ const LOSING_STREAK_MIN_COUNT = 2;
 const LOSING_STREAK_PENALTY_PER_LOSS = 3;
 const MIN_TOTAL_CHANGE_AFTER_LOSING_STREAK = 3;
 const TIER_MESSAGE_EXCLUDED_PLAYER_NAMES = ["しゅー"];
+const PLAYER_RANK_MESSAGE_EXCLUDED_PLAYER_NAMES = ["しゅー"];
+
+// ランク初到達時に表示するAmazonギフトURL。
+// 基本はプレイヤー名 × ランクごとに個別URLを入れてください。
+// 下の PLAYER_RANK_GIFT_URLS は、プレイヤー別URLが未設定のときの予備URLです。
+const PLAYER_RANK_GIFT_URLS_BY_PLAYER = {
+  // 例：
+  // "友人A": {
+  //   Platinum: "https://www.amazon.co.jp/g/xxxxx",
+  //   Sapphire: "https://www.amazon.co.jp/g/yyyyy",
+  //   Ruby: "",
+  //   Diamond: "",
+  //   Master: ""
+  // }
+};
+
+const PLAYER_RANK_GIFT_URLS = {
+  Platinum: "https://www.amazon.co.jp/g/DQSD2QKLWHXBCP?t=SvL",
+  Sapphire: "https://www.amazon.co.jp/g/3BPSR23YZSUECZ?t=SvL",
+  Ruby: "https://www.amazon.co.jp/g/ZAT9YWEC7SX8CN?t=SvL",
+  Diamond: "https://www.amazon.co.jp/g/GFA8JZGW6MUTCN?t=SvL",
+  Master: "https://www.amazon.co.jp/g/XDZE2YSWEXDAC6?t=SvL"
+};
+
+const PLAYER_RANK_MILESTONES = [
+  { rank: "Platinum", threshold: 1600, playerFlag: "reachedRankPlatinum" },
+  { rank: "Sapphire", threshold: 1700, playerFlag: "reachedRankSapphire" },
+  { rank: "Ruby", threshold: 1800, playerFlag: "reachedRankRuby" },
+  { rank: "Diamond", threshold: 1900, playerFlag: "reachedRankDiamond" },
+  { rank: "Master", threshold: 2000, playerFlag: "reachedRankMaster" }
+];
 
 const characters = [
   "おまかせ", "マリオ", "ドンキーコング", "リンク", "サムス", "ダークサムス", "ヨッシー", "カービィ", "フォックス",
@@ -112,13 +143,30 @@ function createRating(playerId, characterName) {
   };
 }
 
+function createPlayerRecord(name, createdAt = new Date().toISOString()) {
+  return {
+    id: uid(),
+    name,
+    createdAt,
+    deletedAt: null,
+    reachedTierS: false,
+    reachedTierSS: false,
+    reachedTierSSS: false,
+    reachedRankPlatinum: false,
+    reachedRankSapphire: false,
+    reachedRankRuby: false,
+    reachedRankDiamond: false,
+    reachedRankMaster: false
+  };
+}
+
 function createInitialData() {
   const now = new Date().toISOString();
   const players = [
-    { id: uid(), name: "しゅー", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false },
-    { id: uid(), name: "友人A", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false },
-    { id: uid(), name: "友人B", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false },
-    { id: uid(), name: "友人C", createdAt: now, deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false }
+    createPlayerRecord("しゅー", now),
+    createPlayerRecord("友人A", now),
+    createPlayerRecord("友人B", now),
+    createPlayerRecord("友人C", now)
   ];
 
   const defaultCharacters = ["マリオ", "ルイージ", "クラウド", "サムス"];
@@ -139,7 +187,12 @@ function appPlayerFromDb(row) {
     deletedAt: row.deleted_at || null,
     reachedTierS: Boolean(row.reached_tier_s),
     reachedTierSS: Boolean(row.reached_tier_ss),
-    reachedTierSSS: Boolean(row.reached_tier_sss)
+    reachedTierSSS: Boolean(row.reached_tier_sss),
+    reachedRankPlatinum: Boolean(row.reached_rank_platinum),
+    reachedRankSapphire: Boolean(row.reached_rank_sapphire),
+    reachedRankRuby: Boolean(row.reached_rank_ruby),
+    reachedRankDiamond: Boolean(row.reached_rank_diamond),
+    reachedRankMaster: Boolean(row.reached_rank_master)
   };
 }
 
@@ -206,7 +259,12 @@ function dbPlayerFromApp(player) {
     deleted_at: player.deletedAt || null,
     reached_tier_s: Boolean(player.reachedTierS),
     reached_tier_ss: Boolean(player.reachedTierSS),
-    reached_tier_sss: Boolean(player.reachedTierSSS)
+    reached_tier_sss: Boolean(player.reachedTierSSS),
+    reached_rank_platinum: Boolean(player.reachedRankPlatinum),
+    reached_rank_sapphire: Boolean(player.reachedRankSapphire),
+    reached_rank_ruby: Boolean(player.reachedRankRuby),
+    reached_rank_diamond: Boolean(player.reachedRankDiamond),
+    reached_rank_master: Boolean(player.reachedRankMaster)
   };
 }
 
@@ -491,6 +549,32 @@ function getPlayerRank(avgRating) {
   return "Iron";
 }
 
+function getPlayerRankMilestones(avgRating) {
+  return PLAYER_RANK_MILESTONES.filter(milestone => avgRating >= milestone.threshold);
+}
+
+function getPlayerRankGiftUrl(playerName, rank) {
+  return PLAYER_RANK_GIFT_URLS_BY_PLAYER[playerName]?.[rank] || PLAYER_RANK_GIFT_URLS[rank] || "";
+}
+
+function getPlayerRankMilestoneMessage(rank) {
+  return `${rank}おめでとう！`;
+}
+
+function getPlayerRatingsFromList(ratings, playerId) {
+  return ratings.filter(rating => rating.playerId === playerId);
+}
+
+function getPlayerAverageRatingFromList(ratings, playerId) {
+  const playerRatings = getPlayerRatingsFromList(ratings, playerId);
+  if (!playerRatings.length) return INITIAL_RATING;
+  return Math.round(playerRatings.reduce((sum, rating) => sum + rating.rating, 0) / playerRatings.length);
+}
+
+function hasEnoughSetsForPlayerRank(ratings, playerId) {
+  return getPlayerRatingsFromList(ratings, playerId).length >= 3;
+}
+
 function getPlayerRankStyle(avgRating) {
   const rank = getPlayerRank(avgRating);
   const styles = {
@@ -549,9 +633,7 @@ function getBestRatingForPlayer(data, playerId) {
 }
 
 function getPlayerAverageRating(data, playerId) {
-  const ratings = data.ratings.filter(r => r.playerId === playerId);
-  if (!ratings.length) return INITIAL_RATING;
-  return Math.round(ratings.reduce((sum, rating) => sum + rating.rating, 0) / ratings.length);
+  return getPlayerAverageRatingFromList(data.ratings, playerId);
 }
 
 function NameTag({ name, rating }) {
@@ -1008,6 +1090,71 @@ function roundChange(value) {
   return Math.round(value);
 }
 
+function getRuleFactor(rule) {
+  return rule === "single" ? 0.5 : 1;
+}
+
+function getRandomMatchFactor(isRandomMatch) {
+  return isRandomMatch ? RANDOM_MATCH_RATE_MULTIPLIER : 1;
+}
+
+function getMaxAbsChangeForMode(mode) {
+  return mode === "2v2" ? 50 : 100;
+}
+
+function getGachiFactor(isGachiMatch) {
+  return isGachiMatch ? 1.2 : 1;
+}
+
+function getLowAverageFactor(matchAverage) {
+  return matchAverage <= 1500 ? 1.1 : 1;
+}
+
+function calculateBaseAbsChange(ratingRecord, won, expected, mult) {
+  const k = getK(ratingRecord.matches);
+  return Math.abs(k * ((won ? 1 : 0) - expected) * mult);
+}
+
+function calculateMemberRatingChange({
+  baseAbs,
+  won,
+  nextStreak,
+  ruleFactor,
+  gachiFactor,
+  lowAverageFactor,
+  randomMatchFactor
+}) {
+  if (won) {
+    const streakBonus = getStreakBonusMultiplier(nextStreak);
+    return Math.max(
+      1,
+      roundChange(
+        (baseAbs * RATE_INTENSITY_MULTIPLIER + WIN_BONUS) *
+          ruleFactor *
+          gachiFactor *
+          lowAverageFactor *
+          streakBonus *
+          RATE_GLOBAL_MULTIPLIER *
+          randomMatchFactor
+      )
+    );
+  }
+
+  return Math.min(
+    -1,
+    -roundChange(
+      baseAbs *
+        RATE_INTENSITY_MULTIPLIER *
+        LOSS_FACTOR *
+        ruleFactor *
+        gachiFactor *
+        lowAverageFactor *
+        RATE_GLOBAL_MULTIPLIER *
+        randomMatchFactor
+    )
+  );
+}
+
 function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam, scoreA, scoreB, isRandomMatch = false }) {
   const ratingsMap = new Map(data.ratings.map(r => [r.key, { ...r }]));
 
@@ -1038,17 +1185,17 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
   const aWon = winnerTeam === "A";
   const mult = scoreMultiplier(aWon ? scoreA : scoreB, aWon ? scoreB : scoreA);
   const rawMembers = [];
-  const ruleFactor = rule === "single" ? 0.5 : 1;
-  const randomMatchFactor = isRandomMatch ? RANDOM_MATCH_RATE_MULTIPLIER : 1;
-  const maxAbsChange = mode === "2v2" ? 50 : 100;
+  const ruleFactor = getRuleFactor(rule);
+  const randomMatchFactor = getRandomMatchFactor(isRandomMatch);
+  const maxAbsChange = getMaxAbsChangeForMode(mode);
 
   const isGachiMatch =
     mode === "1v1" &&
     fullA[0]?.ratingRecord.rating > 1700 &&
     fullB[0]?.ratingRecord.rating > 1700;
 
-  const gachiFactor = isGachiMatch ? 1.2 : 1;
-  const lowAverageFactor = matchAverage <= 1500 ? 1.1 : 1;
+  const gachiFactor = getGachiFactor(isGachiMatch);
+  const lowAverageFactor = getLowAverageFactor(matchAverage);
 
   function apply(member, team, won, expected) {
     const before = member.ratingRecord.rating;
@@ -1056,36 +1203,17 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
     const nextStreak = won ? currentStreak + 1 : 0;
     const currentLossStreak = getCurrentLossStreak(data, member.playerId, member.characterName);
     const nextLossStreak = won ? 0 : currentLossStreak + 1;
-    const k = getK(member.ratingRecord.matches);
-    const baseAbs = Math.abs(k * ((won ? 1 : 0) - expected) * mult);
+    const baseAbs = calculateBaseAbsChange(member.ratingRecord, won, expected, mult);
 
-    let change;
-
-    if (won) {
-      const streakBonus = getStreakBonusMultiplier(nextStreak);
-      change = roundChange(
-        (baseAbs * RATE_INTENSITY_MULTIPLIER + WIN_BONUS) *
-          ruleFactor *
-          gachiFactor *
-          lowAverageFactor *
-          streakBonus *
-          RATE_GLOBAL_MULTIPLIER *
-          randomMatchFactor
-      );
-      change = Math.max(1, change);
-    } else {
-      change = -roundChange(
-        baseAbs *
-          RATE_INTENSITY_MULTIPLIER *
-          LOSS_FACTOR *
-          ruleFactor *
-          gachiFactor *
-          lowAverageFactor *
-          RATE_GLOBAL_MULTIPLIER *
-          randomMatchFactor
-      );
-      change = Math.min(-1, change);
-    }
+    let change = calculateMemberRatingChange({
+      baseAbs,
+      won,
+      nextStreak,
+      ruleFactor,
+      gachiFactor,
+      lowAverageFactor,
+      randomMatchFactor
+    });
 
     change = clamp(change, -maxAbsChange, maxAbsChange);
 
@@ -1207,11 +1335,17 @@ function applyMatch(data, form) {
 
   const milestoneMessages = [];
   const milestoneKeys = new Set();
+  const updatedRatings = Array.from(newRatings.values());
   const nextPlayers = data.players.map(player => ({
     ...player,
     reachedTierS: Boolean(player.reachedTierS),
     reachedTierSS: Boolean(player.reachedTierSS),
-    reachedTierSSS: Boolean(player.reachedTierSSS)
+    reachedTierSSS: Boolean(player.reachedTierSSS),
+    reachedRankPlatinum: Boolean(player.reachedRankPlatinum),
+    reachedRankSapphire: Boolean(player.reachedRankSapphire),
+    reachedRankRuby: Boolean(player.reachedRankRuby),
+    reachedRankDiamond: Boolean(player.reachedRankDiamond),
+    reachedRankMaster: Boolean(player.reachedRankMaster)
   }));
 
   for (const member of calculation.members) {
@@ -1246,6 +1380,43 @@ function applyMatch(data, form) {
     }
   }
 
+
+  const changedPlayerIds = [...new Set(calculation.members.map(member => member.playerId))];
+
+  for (const playerId of changedPlayerIds) {
+    const playerIndex = nextPlayers.findIndex(player => player.id === playerId);
+    if (playerIndex === -1) continue;
+
+    const player = nextPlayers[playerIndex];
+    if (PLAYER_RANK_MESSAGE_EXCLUDED_PLAYER_NAMES.includes(player.name)) continue;
+    if (!hasEnoughSetsForPlayerRank(updatedRatings, playerId)) continue;
+
+    const beforeAvg = getPlayerAverageRatingFromList(data.ratings, playerId);
+    const afterAvg = getPlayerAverageRatingFromList(updatedRatings, playerId);
+    if (afterAvg <= beforeAvg) continue;
+
+    const rankMilestones = getPlayerRankMilestones(afterAvg);
+
+    for (const milestone of rankMilestones) {
+      if (player[milestone.playerFlag]) continue;
+      const uniqueKey = `${player.id}-rank-${milestone.rank}`;
+      if (milestoneKeys.has(uniqueKey)) continue;
+
+      player[milestone.playerFlag] = true;
+      milestoneKeys.add(uniqueKey);
+      milestoneMessages.push({
+        id: uid(),
+        kind: "playerRank",
+        playerId: player.id,
+        playerName: player.name,
+        rank: milestone.rank,
+        message: getPlayerRankMilestoneMessage(milestone.rank),
+        giftUrl: getPlayerRankGiftUrl(player.name, milestone.rank),
+        ratingAfter: afterAvg
+      });
+    }
+  }
+
   const match = {
     id: uid(),
     mode: form.mode,
@@ -1266,7 +1437,7 @@ function applyMatch(data, form) {
     createdAt: new Date().toISOString()
   };
 
-  return { ...data, players: nextPlayers, ratings: Array.from(newRatings.values()), matches: [match, ...data.matches] };
+  return { ...data, players: nextPlayers, ratings: updatedRatings, matches: [match, ...data.matches] };
 }
 
 function resetRatingStats(rating) {
@@ -1427,8 +1598,9 @@ export default function App() {
     setData(next);
 
     try {
-      await deleteSingleMatchFromSupabase(matchId);
-      await upsertRatingsToSupabase(next.ratings);
+      // 履歴削除後は、残った試合のratingBefore / ratingAfter / ratingChangeも再計算されるため、
+      // ratingだけでなくmatches / match_membersまでまとめて保存し直す。
+      await syncAllDataToSupabase(next);
     } catch (error) {
       console.error(error);
       setData(before);
@@ -1444,7 +1616,7 @@ export default function App() {
     const name = newPlayerName.trim();
     if (!name) return;
     if (data.players.some(p => p.name === name && isActivePlayer(p))) return alert("同じ名前のプレイヤーがいます。別名にしてください。");
-    const player = { id: uid(), name, createdAt: new Date().toISOString(), deletedAt: null, reachedTierS: false, reachedTierSS: false, reachedTierSSS: false };
+    const player = createPlayerRecord(name);
     const next = { ...data, players: [...data.players, player] };
     await commit(next);
     setSetPlayerId(player.id);
@@ -1674,8 +1846,9 @@ function MatchInput({ data, commit, saving }) {
   const [winnerTeam, setWinnerTeam] = useState("A");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [inputLocked, setInputLocked] = useState(false);
-  const [lastResult, setLastResult] = useState(null);
+  const [matchStarted, setMatchStarted] = useState(false);
   const [completedMatchId, setCompletedMatchId] = useState("");
+  const [randomPanelOpen, setRandomPanelOpen] = useState(false);
   const [randomMatchTierSelection, setRandomMatchTierSelection] = useState([]);
   const [randomMatchSelectedKeys, setRandomMatchSelectedKeys] = useState([]);
   const [isRandomMatch, setIsRandomMatch] = useState(false);
@@ -1717,10 +1890,13 @@ function MatchInput({ data, commit, saving }) {
     ? selectedRatingA.rating < selectedRatingB.rating ? "A" : selectedRatingB.rating < selectedRatingA.rating ? "B" : null
     : null;
   const isGiantKillingPreview =
+    (matchStarted || inputLocked) &&
     mode === "1v1" &&
     ratingDiffPreview >= GIANT_KILLING_RATING_DIFF &&
     winnerTeam === lowerTeamPreview;
   const isRandomGachiPreview = isRandomMatch && isGachiPreview;
+  const setupLocked = inputLocked || matchStarted;
+  const resultInputOpen = matchStarted || inputLocked;
 
   const randomMatchEligibleSets = registeredSets.filter(rating =>
     randomMatchTierSelection.includes(getTier(rating.rating))
@@ -1759,6 +1935,7 @@ function MatchInput({ data, commit, saving }) {
   }, [randomMatchTierSelection.join("|"), registeredSets.length]);
 
   function updateMember(team, index, patch) {
+    if (setupLocked) return;
     const setter = team === "A" ? setTeamA : setTeamB;
     const current = team === "A" ? teamA : teamB;
     setter(current.map((m, i) => i === index ? { ...m, ...patch } : m));
@@ -1818,48 +1995,85 @@ function MatchInput({ data, commit, saving }) {
       current[1] || { playerId: "", characterName: "" }
     ]);
     setInputLocked(false);
-    setLastResult(null);
+    setMatchStarted(false);
+    setCompletedMatchId("");
+    setRandomPanelOpen(false);
     setIsRandomMatch(true);
     setRandomMatchEffect(true);
     window.setTimeout(() => setRandomMatchEffect(false), 1600);
   }
 
-  async function submit() {
-    if (isSubmitting || inputLocked || saving) return;
-    if (isRandomMatch && mode !== "1v1") return alert("ランダムマッチは1on1のみです。");
+  function validateMatchSetup() {
+    if (isRandomMatch && mode !== "1v1") {
+      alert("ランダムマッチは1on1のみです。");
+      return false;
+    }
+
     if (!hasEnoughSets) {
-      return alert(
+      alert(
         `${mode === "2v2"
           ? "2on2には登録済みキャラを持つプレイヤーが4人必要です"
           : "1on1には登録済みキャラを持つプレイヤーが2人必要です"
         }。現在は${uniqueSelectablePlayerCount}人です。`
       );
+      return false;
     }
 
     const ids = [...activeA, ...activeB].map(m => m.playerId);
     const setKeys = [...activeA, ...activeB].map(m => ratingKey(m.playerId, m.characterName));
 
-    if (ids.some(id => !id)) return alert("プレイヤー・キャラセットを選んでください。");
-    if (new Set(ids).size !== ids.length) return alert("同じ試合内で同じプレイヤーは重複できません。");
-    if (new Set(setKeys).size !== setKeys.length) return alert("同じプレイヤー・キャラセットは重複できません。");
+    if (ids.some(id => !id)) {
+      alert("プレイヤー・キャラセットを選んでください。");
+      return false;
+    }
+    if (new Set(ids).size !== ids.length) {
+      alert("同じ試合内で同じプレイヤーは重複できません。");
+      return false;
+    }
+    if (new Set(setKeys).size !== setKeys.length) {
+      alert("同じプレイヤー・キャラセットは重複できません。");
+      return false;
+    }
     if ([...activeA, ...activeB].some(member => !getRatingForMember(data, member))) {
-      return alert("未登録のプレイヤー・キャラが選ばれています。選手とキャラを選び直してください。");
+      alert("未登録のプレイヤー・キャラが選ばれています。選手とキャラを選び直してください。");
+      return false;
     }
 
     const limitExceeded = dailyLimitRows.find(row => row.count >= row.limit);
-    if (limitExceeded) return alert(`${limitExceeded.name}さんは今日の${getMatchRuleLabel(rule)}の上限（${limitExceeded.limit}回）に達しています。`);
+    if (limitExceeded) {
+      alert(`${limitExceeded.name}さんは今日の${getMatchRuleLabel(rule)}の上限（${limitExceeded.limit}回）に達しています。`);
+      return false;
+    }
+
+    return true;
+  }
+
+  function startMatch() {
+    if (setupLocked || saving) return;
+    if (!validateMatchSetup()) return;
+    setMatchStarted(true);
+    setRandomPanelOpen(false);
+  }
+
+  function backToSetup() {
+    if (inputLocked || saving) return;
+    setMatchStarted(false);
+  }
+
+  async function submit() {
+    if (isSubmitting || inputLocked || saving) return;
+    if (!matchStarted) return alert("先に試合開始を押してください。");
+    if (!validateMatchSetup()) return;
 
     setIsSubmitting(true);
 
     try {
       const next = applyMatch(data, form);
       const newMatch = next.matches[0];
-      setLastResult(newMatch);
       setCompletedMatchId(newMatch.id);
       setInputLocked(true);
+      setMatchStarted(false);
       await commit(next);
-      setLastResult(newMatch);
-      setCompletedMatchId(newMatch.id);
     } catch (error) {
       console.error(error);
       alert(error.message || "試合結果の反映に失敗しました。選手とキャラを選び直してください。");
@@ -1870,7 +2084,7 @@ function MatchInput({ data, commit, saving }) {
 
   function startNextMatch() {
     setInputLocked(false);
-    setLastResult(null);
+    setMatchStarted(false);
     setCompletedMatchId("");
     setIsRandomMatch(false);
   }
@@ -1878,7 +2092,7 @@ function MatchInput({ data, commit, saving }) {
   const completedMatchFromData = completedMatchId
     ? data.matches.find(match => match.id === completedMatchId)
     : null;
-  const shownResult = lastResult || completedMatchFromData || (inputLocked ? data.matches[0] : null);
+  const shownResult = completedMatchFromData || (inputLocked ? data.matches[0] : null);
   const shownResultMembers = Array.isArray(shownResult?.members) ? shownResult.members : [];
 
   return (
@@ -1897,68 +2111,95 @@ function MatchInput({ data, commit, saving }) {
           <div className="grid gap-2 md:grid-cols-2">
             <div className="grid grid-cols-2 gap-2 rounded-2xl border border-blue-100 bg-blue-50 p-1.5">
               {[["single", "1勝制"], ["bo3", "2勝制"]].map(([value, label]) => (
-                <button key={value} onClick={() => { setRule(value); if (isRandomMatch) setIsRandomMatch(false); }} disabled={inputLocked} className={classNames("rounded-xl px-4 py-2 text-sm font-black transition disabled:opacity-50", rule === value ? "bg-blue-600 text-white shadow" : "text-blue-700 hover:bg-white")}>{label}</button>
+                <button key={value} onClick={() => { setRule(value); if (isRandomMatch) setIsRandomMatch(false); }} disabled={setupLocked} className={classNames("min-h-11 rounded-xl px-4 py-2 text-sm font-black transition disabled:opacity-50", rule === value ? "bg-blue-600 text-white shadow" : "text-blue-700 hover:bg-white")}>{label}</button>
               ))}
             </div>
             <div className="grid grid-cols-2 gap-2 rounded-2xl border border-blue-100 bg-blue-50 p-1.5">
               {[["1v1", "1on1"], ["2v2", "2on2"]].map(([value, label]) => (
-                <button key={value} onClick={() => { setMode(value); if (isRandomMatch) setIsRandomMatch(false); }} disabled={inputLocked} className={classNames("rounded-xl px-4 py-2 text-sm font-black transition disabled:opacity-50", mode === value ? "bg-blue-600 text-white shadow" : "text-blue-700 hover:bg-white")}>{label}</button>
+                <button key={value} onClick={() => { setMode(value); if (isRandomMatch) setIsRandomMatch(false); }} disabled={setupLocked} className={classNames("min-h-11 rounded-xl px-4 py-2 text-sm font-black transition disabled:opacity-50", mode === value ? "bg-blue-600 text-white shadow" : "text-blue-700 hover:bg-white")}>{label}</button>
               ))}
             </div>
           </div>
         </div>
 
         <div className="rounded-3xl border border-indigo-100 bg-indigo-50/50 p-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <button
+            type="button"
+            onClick={() => setRandomPanelOpen(current => !current)}
+            disabled={setupLocked}
+            className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-white px-4 py-3 text-left transition hover:bg-indigo-50 disabled:opacity-50"
+          >
             <div>
               <div className="text-sm font-black text-indigo-700">ランダムマッチ作成</div>
-              <p className="mt-1 text-xs font-bold text-slate-500">Tierを選択して、セットをチェックしてください。1on1のみ、レート変動が少し大きくなります。</p>
+              <p className="mt-1 text-xs font-bold text-slate-600">通常入力を邪魔しないように折りたたみ式にしています。Tierを選択して1on1を自動作成できます。</p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={selectAllRandomMatchSets} disabled={!randomMatchEligibleSets.length || inputLocked} className="rounded-2xl bg-indigo-600 px-3 py-2 text-xs font-black text-white transition hover:bg-indigo-700 disabled:bg-slate-300">全て選択</button>
-              <button type="button" onClick={() => setRandomMatchSelectedKeys([])} disabled={inputLocked} className="rounded-2xl border border-indigo-200 bg-white px-3 py-2 text-xs font-black text-indigo-700 transition hover:bg-indigo-50 disabled:opacity-40">選択解除</button>
-              <button type="button" onClick={cancelRandomMatch} disabled={inputLocked} className="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-600 transition hover:bg-slate-50 disabled:opacity-40">キャンセル</button>
-            </div>
-          </div>
+            <ChevronRight className={classNames("h-5 w-5 shrink-0 text-indigo-600 transition", randomPanelOpen ? "rotate-90" : "")} />
+          </button>
 
-          <div className="mt-3 flex flex-wrap gap-2">
-            {RANDOM_MATCH_TIER_OPTIONS.map(option => (
-              <label key={option.value} className={classNames("flex cursor-pointer items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-black transition", randomMatchTierSelection.includes(option.value) ? "border-indigo-500 bg-indigo-600 text-white" : "border-indigo-100 bg-white text-indigo-700 hover:bg-indigo-50")}>
-                <input type="checkbox" checked={randomMatchTierSelection.includes(option.value)} onChange={() => toggleRandomMatchTier(option.value)} disabled={inputLocked} className="accent-indigo-600" />
-                {option.label}
-              </label>
-            ))}
-          </div>
-
-          <div className="mt-3 max-h-56 space-y-2 overflow-auto rounded-3xl border border-indigo-100 bg-white p-3">
-            {randomMatchEligibleSets.map(rating => {
-              const player = data.players.find(p => p.id === rating.playerId);
-              return (
-                <label key={rating.key} className="flex cursor-pointer items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 px-3 py-2 transition hover:bg-blue-50">
-                  <div className="flex items-center gap-2">
-                    <input type="checkbox" checked={randomMatchSelectedKeys.includes(rating.key)} onChange={() => toggleRandomMatchSet(rating.key)} disabled={inputLocked} className="accent-indigo-600" />
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-start gap-2 text-sm font-black text-slate-800">
-                        <PlayerIdentity data={data} playerId={rating.playerId} name={player?.name || "不明"} rating={rating.rating} />
-                        <span className="pt-1">/ {rating.characterName}</span>
-                      </div>
+          <AnimatePresence initial={false}>
+            {(randomPanelOpen || isRandomMatch) && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.18 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-4 space-y-3">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="text-sm font-black text-indigo-700">対象セットを選択</div>
+                      <p className="mt-1 text-xs font-bold text-slate-600">ランダムマッチは1on1のみです。レート変動は少し大きくなります。</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={selectAllRandomMatchSets} disabled={!randomMatchEligibleSets.length || setupLocked} className="min-h-11 rounded-2xl bg-indigo-600 px-3 py-2 text-xs font-black text-white transition hover:bg-indigo-700 disabled:bg-slate-300">全て選択</button>
+                      <button type="button" onClick={() => setRandomMatchSelectedKeys([])} disabled={setupLocked} className="min-h-11 rounded-2xl border border-indigo-200 bg-white px-3 py-2 text-xs font-black text-indigo-700 transition hover:bg-indigo-50 disabled:opacity-40">選択解除</button>
+                      <button type="button" onClick={cancelRandomMatch} disabled={setupLocked} className="min-h-11 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-40">キャンセル</button>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <TierBadge rating={rating.rating} />
-                    <span className={`text-sm font-black ${getTierTextColor(rating.rating)}`}>{rating.rating}</span>
-                  </div>
-                </label>
-              );
-            })}
-            {!randomMatchTierSelection.length && <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50 p-4 text-center text-sm font-bold text-indigo-400">先にTierを選択してください。</div>}
-            {randomMatchTierSelection.length > 0 && !randomMatchEligibleSets.length && <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50 p-4 text-center text-sm font-bold text-indigo-400">対象セットがありません。</div>}
-          </div>
 
-          <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div className="text-xs font-bold text-slate-500">選択中：{randomMatchSelectedSets.length}セット</div>
-            <button type="button" onClick={createRandomMatch} disabled={inputLocked || randomMatchSelectedSets.length < 2} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white transition hover:bg-indigo-950 disabled:bg-slate-300">ランダムに1on1を組む</button>
-          </div>
+                  <div className="flex flex-wrap gap-2">
+                    {RANDOM_MATCH_TIER_OPTIONS.map(option => (
+                      <label key={option.value} className={classNames("flex min-h-11 cursor-pointer items-center gap-2 rounded-2xl border px-3 py-2 text-xs font-black transition", randomMatchTierSelection.includes(option.value) ? "border-indigo-500 bg-indigo-600 text-white" : "border-indigo-100 bg-white text-indigo-700 hover:bg-indigo-50")}>
+                        <input type="checkbox" checked={randomMatchTierSelection.includes(option.value)} onChange={() => toggleRandomMatchTier(option.value)} disabled={setupLocked} className="accent-indigo-600" />
+                        {option.label}
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className="max-h-56 space-y-2 overflow-auto rounded-3xl border border-indigo-100 bg-white p-3">
+                    {randomMatchEligibleSets.map(rating => {
+                      const player = data.players.find(p => p.id === rating.playerId);
+                      return (
+                        <label key={rating.key} className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 px-3 py-2 transition hover:bg-blue-50">
+                          <div className="flex items-center gap-2">
+                            <input type="checkbox" checked={randomMatchSelectedKeys.includes(rating.key)} onChange={() => toggleRandomMatchSet(rating.key)} disabled={setupLocked} className="accent-indigo-600" />
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-start gap-2 text-sm font-black text-slate-800">
+                                <PlayerIdentity data={data} playerId={rating.playerId} name={player?.name || "不明"} rating={rating.rating} />
+                                <span className="pt-1">/ {rating.characterName}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <TierBadge rating={rating.rating} />
+                            <span className={`text-sm font-black ${getTierTextColor(rating.rating)}`}>{rating.rating}</span>
+                          </div>
+                        </label>
+                      );
+                    })}
+                    {!randomMatchTierSelection.length && <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50 p-4 text-center text-sm font-bold text-indigo-600">先にTierを選択してください。</div>}
+                    {randomMatchTierSelection.length > 0 && !randomMatchEligibleSets.length && <div className="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50 p-4 text-center text-sm font-bold text-indigo-600">対象セットがありません。</div>}
+                  </div>
+
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div className="text-xs font-bold text-slate-600">選択中：{randomMatchSelectedSets.length}セット</div>
+                    <button type="button" onClick={createRandomMatch} disabled={setupLocked || randomMatchSelectedSets.length < 2} className="min-h-11 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-black text-white transition hover:bg-indigo-950 disabled:bg-slate-300">ランダムに1on1を組む</button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <AnimatePresence>
             {randomMatchEffect && (
@@ -1970,7 +2211,7 @@ function MatchInput({ data, commit, saving }) {
                   "mt-3 rounded-3xl border p-4 text-center text-xl font-black shadow-sm",
                   isRandomGachiPreview
                     ? "border-red-700 bg-black text-red-500 shadow-red-200"
-                    : "border-yellow-300 bg-yellow-50 text-yellow-800"
+                    : "border-indigo-300 bg-indigo-50 text-indigo-800"
                 )}
               >
                  {isRandomGachiPreview ? "ランダムガチマッチ" : "ランダムマッチ"}
@@ -1983,7 +2224,7 @@ function MatchInput({ data, commit, saving }) {
               "mt-3 rounded-2xl border px-3 py-2 text-sm font-black",
               isRandomGachiPreview
                 ? "border-red-700 bg-black text-red-500 shadow-sm shadow-red-200"
-                : "border-yellow-300 bg-yellow-50 text-yellow-800"
+                : "border-indigo-200 bg-indigo-50 text-indigo-800"
             )}>
               この試合は{isRandomGachiPreview ? "ランダムガチマッチ" : "ランダムマッチ"}です。
             </div>
@@ -1991,7 +2232,7 @@ function MatchInput({ data, commit, saving }) {
         </div>
 
         <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-stretch">
-          <TeamCard title="Team A" team="A" members={activeA} updateMember={updateMember} data={data} registeredSets={registeredSets} disabled={inputLocked} active={winnerTeam === "A"} />
+          <TeamCard title="Team A" team="A" members={activeA} updateMember={updateMember} data={data} registeredSets={registeredSets} disabled={setupLocked} active={resultInputOpen && winnerTeam === "A"} />
           <div className="flex items-center justify-center">
             <div
               className={classNames(
@@ -2010,40 +2251,73 @@ function MatchInput({ data, commit, saving }) {
               {isRandomGachiPreview ? "ランダムガチマッチ VS" : isRandomMatch ? "ランダムマッチ VS" : isGiantKillingPreview ? "ジャイアントキリング対象 VS" : isGachiPreview ? "ガチマッチ VS" : "VS"}
             </div>
           </div>
-          <TeamCard title="Team B" team="B" members={activeB} updateMember={updateMember} data={data} registeredSets={registeredSets} disabled={inputLocked} active={winnerTeam === "B"} />
+          <TeamCard title="Team B" team="B" members={activeB} updateMember={updateMember} data={data} registeredSets={registeredSets} disabled={setupLocked} active={resultInputOpen && winnerTeam === "B"} />
         </div>
 
-        <div className="grid gap-3 rounded-3xl border border-blue-100 bg-blue-50/70 p-4 md:grid-cols-3">
-          <label className="space-y-2">
-            <span className="text-sm font-bold text-slate-600">勝者</span>
-            <select value={winnerTeam} onChange={e => setWinnerTeam(e.target.value)} disabled={inputLocked} className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400 disabled:opacity-50">
-              <option value="A">Team A</option>
-              <option value="B">Team B</option>
-            </select>
-          </label>
-          <label className="space-y-2">
-            <span className="text-sm font-bold text-slate-600">スコア</span>
-            <select value={score} onChange={e => setScore(e.target.value)} disabled={inputLocked} className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400 disabled:opacity-50">
-              {rule === "single" ? (
-                <option value="1-0">1 - 0</option>
-              ) : (
-                <>
-                  <option value="2-1">2 - 1</option>
-                  <option value="2-0">2 - 0</option>
-                </>
-              )}
-            </select>
-          </label>
-          <div className="flex items-end">
-            <button
-              onClick={submit}
-              disabled={!hasEnoughSets || isSubmitting || inputLocked || saving}
-              className="w-full rounded-2xl bg-blue-600 p-3 font-black text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300 disabled:shadow-none"
-            >
-              {isSubmitting || saving ? "処理中..." : inputLocked ? "確定済み" : "試合終了・結果確定"}
-            </button>
+        {!resultInputOpen ? (
+          <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="text-sm font-black text-blue-600">準備完了</div>
+                <p className="mt-1 text-sm font-bold text-slate-600">対戦相手とルールを確認してから、試合開始を押してください。開始後に勝者とスコアを入力できます。</p>
+              </div>
+              <button
+                type="button"
+                onClick={startMatch}
+                disabled={!hasEnoughSets || saving}
+                className="min-h-11 rounded-2xl bg-slate-950 px-6 py-3 font-black text-white shadow-lg shadow-blue-200 transition hover:bg-blue-950 disabled:bg-slate-300 disabled:shadow-none"
+              >
+                試合開始
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="grid gap-3 rounded-3xl border border-blue-100 bg-blue-50/70 p-4 md:grid-cols-4">
+            <div className="md:col-span-4 rounded-2xl border border-blue-100 bg-white px-4 py-3">
+              <div className="text-sm font-black text-blue-600">{inputLocked ? "結果確定済み" : "試合結果入力"}</div>
+              <p className="mt-1 text-xs font-bold text-slate-600">{inputLocked ? "次の試合を入力するには、右側のボタンを押してください。" : "試合が終わったら、勝者とスコアを選んで結果を確定してください。"}</p>
+            </div>
+            <label className="space-y-2">
+              <span className="text-sm font-bold text-slate-600">勝者</span>
+              <select value={winnerTeam} onChange={e => setWinnerTeam(e.target.value)} disabled={inputLocked} className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400 disabled:opacity-50">
+                <option value="A">Team A</option>
+                <option value="B">Team B</option>
+              </select>
+            </label>
+            <label className="space-y-2">
+              <span className="text-sm font-bold text-slate-600">スコア</span>
+              <select value={score} onChange={e => setScore(e.target.value)} disabled={inputLocked} className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400 disabled:opacity-50">
+                {rule === "single" ? (
+                  <option value="1-0">1 - 0</option>
+                ) : (
+                  <>
+                    <option value="2-1">2 - 1</option>
+                    <option value="2-0">2 - 0</option>
+                  </>
+                )}
+              </select>
+            </label>
+            <div className="flex items-end">
+              <button
+                type="button"
+                onClick={backToSetup}
+                disabled={inputLocked || saving}
+                className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white p-3 font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
+              >
+                開始前に戻る
+              </button>
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={submit}
+                disabled={!hasEnoughSets || isSubmitting || inputLocked || saving}
+                className="min-h-11 w-full rounded-2xl bg-blue-600 p-3 font-black text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300 disabled:shadow-none"
+              >
+                {isSubmitting || saving ? "処理中..." : inputLocked ? "確定済み" : "試合結果を確定"}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="rounded-3xl border border-blue-100 bg-white p-4">
           <div className="text-sm font-black text-blue-600">本日の上限：{getMatchRuleLabel(rule)}は1人{dailyLimit}回まで</div>
@@ -2064,7 +2338,9 @@ function MatchInput({ data, commit, saving }) {
           <h3 className="text-xl font-black text-slate-950">今回のレート変動</h3>
         </div>
         {!shownResult ? (
-          <div className="mt-4 rounded-3xl border border-dashed border-blue-200 bg-blue-50/70 p-5 text-sm font-medium text-slate-500">試合結果を確定すると、ここに増減が表示されます。</div>
+          <div className="mt-4 rounded-3xl border border-dashed border-blue-200 bg-blue-50/70 p-5 text-sm font-medium text-slate-500">
+            {matchStarted ? "試合結果を確定すると、ここに増減が表示されます。" : "試合開始後、結果を確定するとここに増減が表示されます。"}
+          </div>
         ) : (
           <div className="mt-4 space-y-3">
             <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-700">{getRandomMatchLabel(shownResult) ? `${getRandomMatchLabel(shownResult)} / ` : ""}{getMatchRuleLabel(inferRuleFromMatch(shownResult))} / {shownResult.mode} / Team {shownResult.winnerTeam} 勝利 / {shownResult.scoreA}-{shownResult.scoreB}</div>
@@ -2085,7 +2361,24 @@ function MatchInput({ data, commit, saving }) {
                     <div className="flex flex-wrap items-start gap-2">
                       <span>🎉</span>
                       <PlayerIdentity data={data} playerId={item.playerId} name={item.playerName} rating={item.ratingAfter} />
-                      <span className="pt-1">/ {item.characterName}: {item.message}！（{item.ratingAfter}）</span>
+                      {item.kind === "playerRank" ? (
+                        <span className="pt-1">
+                          : {item.message}
+                          {item.giftUrl && (
+                            <a
+                              href={item.giftUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="ml-2 rounded-full bg-yellow-200 px-2 py-0.5 text-yellow-900 underline underline-offset-2 transition hover:bg-yellow-300"
+                            >
+                              AmazonギフトURL
+                            </a>
+                          )}
+                          （Player Rate {item.ratingAfter}）
+                        </span>
+                      ) : (
+                        <span className="pt-1">/ {item.characterName}: {item.message}！（{item.ratingAfter}）</span>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -2117,7 +2410,7 @@ function MatchInput({ data, commit, saving }) {
               <span className="text-slate-600">合計増減</span>
               <ChangeBadge change={shownResultMembers.reduce((sum, member) => sum + member.ratingChange, 0)} />
             </div>
-            <button onClick={startNextMatch} className="w-full rounded-2xl bg-slate-950 p-3 font-black text-white transition hover:bg-blue-950">次の試合を入力する</button>
+            <button onClick={startNextMatch} className="min-h-11 w-full rounded-2xl bg-slate-950 p-3 font-black text-white transition hover:bg-blue-950">次の試合を入力する</button>
           </div>
         )}
       </AppShellCard>
@@ -2289,9 +2582,8 @@ function Ranking({ data, ranking, totalRanking }) {
                     <div className="flex items-center gap-3">
                       <TierBadge rating={r.rating} large />
                       <div className={`text-2xl font-black ${getTierTextColor(r.rating)}`}>{r.rating}</div>
-                      <div className="text-xs font-bold text-slate-400">{r.wins}-{r.losses}</div>
-                      <div className="rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600">
-                        勝率 {getWinRateText(r.wins, r.matches)}
+                      <div className="hidden rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600 md:inline-flex">
+                        クリックで詳細
                       </div>
                     </div>
                   </div>
@@ -2363,7 +2655,7 @@ function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlaye
         <h2 className="text-2xl font-black text-slate-950">プレイヤー管理</h2>
         <div className="mt-4 flex gap-2">
           <input value={newPlayerName} onChange={e => setNewPlayerName(e.target.value)} onKeyDown={e => e.key === "Enter" && addPlayer()} placeholder="プレイヤー名" className="flex-1 rounded-2xl border border-blue-100 bg-blue-50/60 p-3 font-bold outline-none focus:border-blue-400" />
-          <button onClick={addPlayer} disabled={saving} className="rounded-2xl bg-blue-600 px-5 font-black text-white shadow-lg shadow-blue-200 disabled:bg-slate-300">追加</button>
+          <button onClick={addPlayer} disabled={saving} className="min-h-11 rounded-2xl bg-blue-600 px-5 font-black text-white shadow-lg shadow-blue-200 disabled:bg-slate-300">追加</button>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           {activePlayers.map(player => (
@@ -2372,7 +2664,7 @@ function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlaye
                 <PlayerIdentity data={data} playerId={player.id} name={player.name} rating={getBestRatingForPlayer(data, player.id)} />
                 <div className="text-xs font-bold text-slate-400">登録済み</div>
               </div>
-              <button onClick={() => deletePlayer(player.id)} disabled={saving} className="rounded-2xl p-2 text-red-500 transition hover:bg-red-50 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>
+              <button onClick={() => deletePlayer(player.id)} disabled={saving} className="min-h-11 min-w-11 rounded-2xl p-2 text-red-500 transition hover:bg-red-50 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>
             </div>
           ))}
         </div>
@@ -2385,8 +2677,8 @@ function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlaye
                 <div key={player.id} className="flex items-center justify-between rounded-2xl bg-white p-3">
                   <PlayerIdentity data={data} playerId={player.id} name={player.name} />
                   <div className="flex gap-2">
-                    <button onClick={() => restorePlayer(player.id)} disabled={saving} className="rounded-xl bg-amber-400 px-3 py-2 text-sm font-black text-slate-950 disabled:opacity-40">復元</button>
-                    <button onClick={() => hardDeletePlayer(player.id)} disabled={saving} className="rounded-xl bg-red-600 px-3 py-2 text-sm font-black text-white disabled:opacity-40">完全削除</button>
+                    <button onClick={() => restorePlayer(player.id)} disabled={saving} className="min-h-11 rounded-xl bg-amber-400 px-3 py-2 text-sm font-black text-slate-950 disabled:opacity-40">復元</button>
+                    <button onClick={() => hardDeletePlayer(player.id)} disabled={saving} className="min-h-11 rounded-xl bg-red-600 px-3 py-2 text-sm font-black text-white disabled:opacity-40">完全削除</button>
                   </div>
                 </div>
               ))}
@@ -2405,7 +2697,7 @@ function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlaye
           <select value={setCharacterName} onChange={e => setSetCharacterName(e.target.value)} className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3 font-bold outline-none focus:border-blue-400">
             {characters.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <button onClick={addCharacterSet} disabled={saving || !activePlayers.length} className="rounded-2xl bg-slate-950 px-5 font-black text-white disabled:bg-slate-300">セット追加</button>
+          <button onClick={addCharacterSet} disabled={saving || !activePlayers.length} className="min-h-11 rounded-2xl bg-slate-950 px-5 font-black text-white disabled:bg-slate-300">セット追加</button>
         </div>
 
         <div className="mt-5 max-h-[520px] space-y-3 overflow-auto pr-1">
@@ -2417,7 +2709,7 @@ function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlaye
               </div>
               <div className="flex items-center gap-2">
                 <TierBadge rating={r.rating} />
-                <button onClick={() => deleteCharacterSet(r.key)} disabled={saving} className="rounded-2xl p-2 text-red-500 transition hover:bg-red-50 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>
+                <button onClick={() => deleteCharacterSet(r.key)} disabled={saving} className="min-h-11 min-w-11 rounded-2xl p-2 text-red-500 transition hover:bg-red-50 disabled:opacity-40"><Trash2 className="h-4 w-4" /></button>
               </div>
             </div>
           ))}
@@ -2448,7 +2740,7 @@ function HistoryView({ data, deleteMatchOnly, saving }) {
           <h2 className="text-2xl font-black text-slate-950">対戦履歴</h2>
           <p className="mt-1 text-sm font-medium text-slate-500">過去の試合を個別に取り消せます。取り消し後はレートとランキングを再計算します。</p>
         </div>
-        <button onClick={handleUndoLatest} disabled={!data.matches.length || saving} className="flex items-center justify-center gap-2 rounded-2xl bg-amber-400 px-4 py-3 font-black text-slate-950 transition hover:bg-amber-300 disabled:opacity-40"><RotateCcw className="h-4 w-4" />直前の試合を取り消す</button>
+        <button onClick={handleUndoLatest} disabled={!data.matches.length || saving} className="flex items-center justify-center gap-2 min-h-11 rounded-2xl bg-amber-400 px-4 py-3 font-black text-slate-950 transition hover:bg-amber-300 disabled:opacity-40"><RotateCcw className="h-4 w-4" />直前の試合を取り消す</button>
       </div>
 
       <div className="mt-5 space-y-3">
@@ -2474,7 +2766,7 @@ function HistoryView({ data, deleteMatchOnly, saving }) {
                     )}
                   </div>
                 </div>
-                <button onClick={() => handleDeleteMatch(match.id)} disabled={saving} className="flex items-center justify-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-black text-red-600 transition hover:bg-red-100 disabled:opacity-40">
+                <button onClick={() => handleDeleteMatch(match.id)} disabled={saving} className="flex items-center justify-center gap-2 min-h-11 rounded-2xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-black text-red-600 transition hover:bg-red-100 disabled:opacity-40">
                   <Trash2 className="h-4 w-4" />この試合を取り消す
                 </button>
               </div>
@@ -2498,11 +2790,61 @@ function HistoryView({ data, deleteMatchOnly, saving }) {
   );
 }
 
-function Stats({ data, ranking, refreshData, saving }) {
+function Stats({ data, ranking, totalRanking = [], refreshData, saving }) {
   const totalMatches = data.matches.length;
   const totalPlayers = activePlayersOf(data).length;
   const activeCharacters = data.ratings.length;
   const top = ranking[0];
+  const [openSpecGroup, setOpenSpecGroup] = useState("rating");
+
+  const specGroups = [
+    {
+      id: "data",
+      title: "保存・データ",
+      items: [
+        "保存先：Supabase",
+        "レート単位：プレイヤー × キャラ",
+        "削除したプレイヤーは復元可能",
+        "キャラ登録：1人5体まで"
+      ]
+    },
+    {
+      id: "match",
+      title: "試合形式・制限",
+      items: [
+        "形式：1on1 / 2on2",
+        "ルール：1勝制がメイン。2勝制も選択可能",
+        "1勝制：レート変動は2勝制の半分",
+        "1日上限：1勝制30回、2勝制15回",
+        "2on2：チーム平均レートで計算"
+      ]
+    },
+    {
+      id: "rating",
+      title: "レート計算",
+      items: [
+        "勝利：レートプラス",
+        "敗北：必ずマイナス",
+        "2-0勝利：2勝制のみ変動1.1倍",
+        "3連勝以上：勝者だけ連勝ボーナス。上限は1.5倍",
+        "ガチマッチ：1on1で両者1700超えなら変動1.2倍",
+        "変動上限：個人戦±100、チーム戦±50。ただしジャイアントキリング補正は上限突破",
+        "ジャイアントキリング：1on1でレート差200以上の低レート側勝利時、レート変動が激しくなる。"
+      ]
+    },
+    {
+      id: "ranking",
+      title: "ランキング・Tier",
+      items: [
+        "ランキング：Tier以上表示・Tierごとの絞り込みに対応",
+        "ランダムマッチ：Tier選択→セット複数選択→1on1を自動作成。両者1700超えならランダムガチマッチ表示になります",
+        "ランキング：プレイヤー名・キャラ名クリックでレート推移グラフ表示",
+        "プレイヤー総合：3キャラ以上登録しているプレイヤーのみ表示。",
+        "ランク：Master 2000+ / Diamond 1900+ / Ruby 1800+ / Sapphire 1700+ / Platinum 1600+ / Gold 1550+ / Silver 1450+ / Bronze 1400+ / Iron 1400以下",
+        "ティア：SSS 2200+ / SS 2000+ / S 1800+ / A 1600+ / B 1400+ / C 1200+ / D 1001-1199 / E 1000以下"
+      ]
+    }
+  ];
 
   return (
     <div className="grid gap-4 md:grid-cols-4">
@@ -2510,34 +2852,68 @@ function Stats({ data, ranking, refreshData, saving }) {
       <StatCard label="試合数" value={totalMatches} />
       <StatCard label="登録キャラレート" value={activeCharacters} />
       <StatCard label="最高レート" value={top ? top.rating : INITIAL_RATING} />
+
       <AppShellCard className="md:col-span-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <h2 className="text-2xl font-black text-slate-950">現在の仕様</h2>
-          <button onClick={refreshData} disabled={saving} className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-black text-blue-700 hover:bg-blue-100 disabled:opacity-40">Supabaseから再読み込み</button>
+          <div>
+            <h2 className="text-2xl font-black text-slate-950">概要</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-600">よく見る数値を上に置き、細かい仕様はカテゴリごとに折りたたみました。</p>
+          </div>
+          <button onClick={refreshData} disabled={saving} className="min-h-11 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-black text-blue-700 hover:bg-blue-100 disabled:opacity-40">Supabaseから再読み込み</button>
         </div>
-        <div className="mt-4 grid gap-3 text-sm font-bold text-slate-700 md:grid-cols-2">
-          <Spec text="保存先：Supabase" />
-          <Spec text="レート単位：プレイヤー × キャラ" />
-          <Spec text="形式：1on1 / 2on2" />
-          <Spec text="ルール：1勝制がメイン。2勝制も選択可能" />
-          <Spec text="1勝制：レート変動は2勝制の半分" />
-          <Spec text="1日上限：1勝制30回、2勝制15回" />
-          <Spec text="キャラ登録：1人5体まで" />
-          <Spec text="削除したプレイヤーは復元可能" />
-          <Spec text="2on2：チーム平均レートで計算" />
-          <Spec text="勝利：レートプラス" />
-          <Spec text="敗北：必ずマイナス" />
-          <Spec text="2-0勝利：2勝制のみ変動1.1倍" />
-          <Spec text="3連勝以上：勝者だけ連勝ボーナス。上限は1.5倍" />
-          <Spec text="ガチマッチ：1on1で両者1700超えなら変動1.2倍" />
-          <Spec text="変動上限：個人戦±100、チーム戦±50。ただしジャイアントキリング補正は上限突破" />
-          <Spec text="ジャイアントキリング：1on1でレート差200以上の低レート側勝利時、レート変動が激しくなる。" />
-          <Spec text="ランキング：Tier以上表示・Tierごとの絞り込みに対応" />
-          <Spec text="ランダムマッチ：Tier選択→セット複数選択→1on1を自動作成。両者1700超えならランダムガチマッチ表示になります" />
-          <Spec text="ランキング：プレイヤー名・キャラ名クリックでレート推移グラフ表示" />
-          <Spec text="プレイヤー総合：3キャラ以上登録しているプレイヤーのみ表示。" />
-          <Spec text="ランク：Master 2000+ / Diamond 1900+ / Ruby 1800+ / Sapphire 1700+ / Platinum 1600+ / Gold 1550+ / Silver 1450+ / Bronze 1400+ / Iron 1400以下" />
-          <Spec text="ティア：SSS 2200+ / SS 2000+ / S 1800+ / A 1600+ / B 1400+ / C 1200+ / D 1001-1199 / E 1000以下" />
+
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4">
+            <div className="text-xs font-black uppercase tracking-wider text-blue-500">Top Character</div>
+            <div className="mt-2 text-xl font-black text-slate-950">{top ? top.characterName : "未登録"}</div>
+            <div className="mt-1 text-sm font-bold text-slate-600">{top ? `${top.rating} / ${getTier(top.rating)}` : "データなし"}</div>
+          </div>
+          <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4">
+            <div className="text-xs font-black uppercase tracking-wider text-blue-500">Player Ranking</div>
+            <div className="mt-2 text-xl font-black text-slate-950">{totalRanking.length}人</div>
+            <div className="mt-1 text-sm font-bold text-slate-600">3キャラ以上登録済みの総合ランキング対象</div>
+          </div>
+          <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4">
+            <div className="text-xs font-black uppercase tracking-wider text-blue-500">Average Matches</div>
+            <div className="mt-2 text-xl font-black text-slate-950">{activeCharacters ? (data.ratings.reduce((sum, rating) => sum + rating.matches, 0) / activeCharacters).toFixed(1) : "0.0"}</div>
+            <div className="mt-1 text-sm font-bold text-slate-600">登録キャラ1体あたりの平均試合数</div>
+          </div>
+        </div>
+      </AppShellCard>
+
+      <AppShellCard className="md:col-span-4">
+        <h2 className="text-2xl font-black text-slate-950">現在の仕様</h2>
+        <div className="mt-4 space-y-3">
+          {specGroups.map(group => {
+            const open = openSpecGroup === group.id;
+            return (
+              <div key={group.id} className="rounded-3xl border border-blue-100 bg-blue-50/60 p-3">
+                <button
+                  type="button"
+                  onClick={() => setOpenSpecGroup(current => current === group.id ? "" : group.id)}
+                  className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 text-left font-black text-slate-800 transition hover:bg-blue-50"
+                >
+                  {group.title}
+                  <ChevronRight className={classNames("h-5 w-5 shrink-0 text-blue-500 transition", open ? "rotate-90" : "")} />
+                </button>
+                <AnimatePresence initial={false}>
+                  {open && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.16 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-3 grid gap-3 text-sm font-bold text-slate-700 md:grid-cols-2">
+                        {group.items.map(item => <Spec key={item} text={item} />)}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
         </div>
       </AppShellCard>
     </div>
