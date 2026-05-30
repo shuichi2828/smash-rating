@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Users, Plus, History, RotateCcw, Sword, BarChart3, Trash2, Swords, Medal, ChevronRight, Cloud } from "lucide-react";
+import { Trophy, Users, Plus, History, RotateCcw, BarChart3, Trash2, Swords, Medal, ChevronRight, Cloud } from "lucide-react";
 import { supabase } from "./lib/supabase";
 
 // Smash Rating App MVP
 // - Supabase synced version
-// - White/blue visual design
+// - Black/blue visual design
 // - Rating unit: Player × Character
 // - Modes: 1v1 / 2v2
 // - Rules: Single game as main rule, or BO3 as optional rule
@@ -1509,6 +1509,19 @@ function classNames(...items) {
   return items.filter(Boolean).join(" ");
 }
 
+function AppLogo() {
+  return (
+    <div className="relative grid h-16 w-16 shrink-0 place-items-center rounded-[1.4rem] border border-blue-400/60 bg-gradient-to-br from-slate-950 via-blue-950 to-blue-600 shadow-xl shadow-blue-950/60 ring-1 ring-white/10">
+      <div className="absolute left-2 top-2 h-5 w-5 rounded-full bg-blue-300/70 blur-sm" />
+      <div className="absolute bottom-2 right-2 h-7 w-7 rounded-full bg-blue-700/60 blur-md" />
+      <Swords className="relative h-8 w-8 text-white drop-shadow-lg" />
+      <span className="absolute -bottom-2 rounded-full border border-blue-300/70 bg-slate-950 px-2 py-0.5 text-[10px] font-black tracking-widest text-blue-200 shadow-md">
+        VS
+      </span>
+    </div>
+  );
+}
+
 function PlayerName({ data, players, id }) {
   const player = data?.players?.find(p => p.id === id) || players?.find(p => p.id === id);
 
@@ -1537,7 +1550,11 @@ function SetLabel({ data, rating }) {
 }
 
 function AppShellCard({ children, className = "" }) {
-  return <section className={`rounded-3xl border border-blue-100 bg-white p-5 shadow-sm shadow-blue-100/70 ${className}`}>{children}</section>;
+  return (
+    <section className={`rounded-3xl border border-blue-200/80 bg-white/95 p-5 shadow-xl shadow-blue-950/20 backdrop-blur ${className}`}>
+      {children}
+    </section>
+  );
 }
 
 export default function App() {
@@ -1714,32 +1731,34 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-white via-blue-50 to-sky-100 p-6">
-        <div className="rounded-3xl border border-blue-100 bg-white p-8 text-center shadow-sm shadow-blue-100">
-          <Cloud className="mx-auto h-10 w-10 text-blue-600" />
-          <h1 className="mt-4 text-2xl font-black text-slate-950">Supabaseから読み込み中...</h1>
-          <p className="mt-2 text-sm font-bold text-slate-500">少し待ってください。</p>
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-black via-slate-950 to-blue-950 p-6">
+        <div className="rounded-3xl border border-blue-500/40 bg-slate-950/90 p-8 text-center shadow-2xl shadow-blue-950/60">
+          <Cloud className="mx-auto h-10 w-10 text-blue-300" />
+          <h1 className="mt-4 text-2xl font-black text-white">Supabaseから読み込み中...</h1>
+          <p className="mt-2 text-sm font-bold text-blue-200">少し待ってください。</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-white via-blue-50 to-sky-100 text-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-black via-slate-950 to-blue-950 text-slate-900">
       <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-8">
-        <header className="overflow-hidden rounded-[2rem] border border-blue-100 bg-white shadow-sm shadow-blue-100/80">
+        <header className="overflow-hidden rounded-[2rem] border border-blue-500/30 bg-slate-950/90 shadow-2xl shadow-blue-950/40">
           <div className="relative p-6 md:p-8">
-            <div className="absolute right-0 top-0 h-40 w-40 rounded-bl-full bg-blue-100/80" />
+            <div className="absolute right-0 top-0 h-48 w-48 rounded-bl-full bg-blue-500/20 blur-sm" />
+            <div className="absolute left-10 top-0 h-24 w-24 rounded-full bg-blue-400/10 blur-2xl" />
             <div className="relative flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
               <div className="flex items-center gap-4">
-                <div className="rounded-3xl bg-blue-600 p-4 text-white shadow-lg shadow-blue-200">
-                  <Sword className="h-8 w-8" />
-                </div>
+                <AppLogo />
                 <div>
-                  <h1 className="text-3xl font-black tracking-tight text-slate-950 md:text-5xl">IGS Smash Rating</h1>
+                  <div className="mb-1 inline-flex rounded-full border border-blue-400/40 bg-blue-500/10 px-3 py-1 text-xs font-black tracking-widest text-blue-200">
+                    IGS BATTLE BOARD
+                  </div>
+                  <h1 className="text-3xl font-black tracking-tight text-white md:text-5xl">IGS Smash Rating</h1>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-2 rounded-3xl border border-blue-100 bg-blue-50/70 p-3 text-center">
+              <div className="grid grid-cols-3 gap-2 rounded-3xl border border-blue-400/30 bg-black/35 p-3 text-center backdrop-blur">
                 <MiniStat label="Players" value={activePlayersOf(data).length} />
                 <MiniStat label="Sets" value={data.ratings.length} />
                 <MiniStat label="Matches" value={data.matches.length} />
@@ -1749,7 +1768,7 @@ export default function App() {
         </header>
 
         {(saving || errorMessage) && (
-          <div className={`rounded-3xl border p-4 text-sm font-bold ${errorMessage ? "border-red-200 bg-red-50 text-red-600" : "border-blue-200 bg-blue-50 text-blue-700"}`}>
+          <div className={`rounded-3xl border p-4 text-sm font-bold shadow-lg ${errorMessage ? "border-red-400/40 bg-red-950/80 text-red-200 shadow-red-950/30" : "border-blue-400/40 bg-blue-950/80 text-blue-100 shadow-blue-950/30"}`}>
             {errorMessage || "Supabaseに保存中..."}
           </div>
         )}
@@ -1769,8 +1788,8 @@ export default function App() {
                 "rounded-2xl border px-4 py-3 font-bold transition",
                 "flex items-center justify-center gap-2",
                 tab === key
-                  ? "border-blue-600 bg-blue-600 text-white shadow-lg shadow-blue-200"
-                  : "border-blue-100 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                  ? "border-blue-400 bg-blue-600 text-white shadow-lg shadow-blue-900/50"
+                  : "border-blue-500/20 bg-slate-950/80 text-blue-100 hover:border-blue-400 hover:bg-blue-950 hover:text-white"
               )}
             >
               <Icon className="h-4 w-4" /> {label}
@@ -1817,9 +1836,9 @@ export default function App() {
 
 function MiniStat({ label, value }) {
   return (
-    <div className="rounded-2xl bg-white px-4 py-3 shadow-sm">
-      <div className="text-xs font-black uppercase tracking-wider text-blue-500">{label}</div>
-      <div className="text-2xl font-black text-slate-950">{value}</div>
+    <div className="rounded-2xl border border-blue-400/20 bg-slate-950/80 px-4 py-3 shadow-sm">
+      <div className="text-xs font-black uppercase tracking-wider text-blue-300">{label}</div>
+      <div className="text-2xl font-black text-white">{value}</div>
     </div>
   );
 }
@@ -2922,8 +2941,8 @@ function Stats({ data, ranking, totalRanking = [], refreshData, saving }) {
 
 function StatCard({ label, value }) {
   return (
-    <div className="rounded-3xl border border-blue-100 bg-white p-5 shadow-sm shadow-blue-100/70">
-      <div className="text-sm font-black uppercase tracking-wider text-blue-500">{label}</div>
+    <div className="rounded-3xl border border-blue-200/80 bg-white/95 p-5 shadow-xl shadow-blue-950/20 backdrop-blur">
+      <div className="text-sm font-black uppercase tracking-wider text-blue-600">{label}</div>
       <div className="mt-2 text-4xl font-black text-slate-950">{value}</div>
     </div>
   );
