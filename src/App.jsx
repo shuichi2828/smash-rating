@@ -2403,7 +2403,7 @@ function MatchInput({ data, commit, saving }) {
           <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <div className="text-sm font-black text-blue-600">準備完了</div>
+                <div className="text-xl  font-black text-red-600">！必ず入力前にローディング！</div>
                 <p className="mt-1 text-sm font-bold text-slate-600">対戦相手とルールを確認してから、試合開始を押してください。開始後に勝者とスコアを入力できます。</p>
               </div>
               <button
