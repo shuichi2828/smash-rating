@@ -10,7 +10,7 @@ import { supabase } from "./lib/supabase";
 // - Modes: 1v1 / 2v2
 // - Rules: Single game as main rule, or BO3 as optional rule
 // - Elo-based rating: upset wins move a lot, expected wins move a little
-// - Losers lose points, but total rating change per match is at least +5
+// - Losers lose points, but total rating change per match is at least +5; losing-streak penalty also keeps the non-streak-bonus total at least +5
 
 const INITIAL_RATING = 1500;
 const NIL_UUID = "00000000-0000-0000-0000-000000000000";
@@ -27,7 +27,7 @@ const GIANT_KILLING_BONUS_MULTIPLIER = 0.2;
 const RANDOM_MATCH_RATE_MULTIPLIER = 1.1;
 const LOSING_STREAK_MIN_COUNT = 2;
 const LOSING_STREAK_PENALTY_PER_LOSS = 3;
-const MIN_TOTAL_CHANGE_AFTER_LOSING_STREAK = 3;
+const MIN_TOTAL_CHANGE_AFTER_LOSING_STREAK = 5;
 const TIER_MESSAGE_EXCLUDED_PLAYER_NAMES = ["しゅー"];
 const PLAYER_RANK_MESSAGE_EXCLUDED_PLAYER_NAMES = ["しゅー"];
 
@@ -41,7 +41,8 @@ const PLAYER_RANK_GIFT_URLS_BY_PLAYER = {
   //   Sapphire: "https://www.amazon.co.jp/g/yyyyy",
   //   Ruby: "",
   //   Diamond: "",
-  //   Master: ""
+  //   Master: "",
+  //   "Grand Master": ""
   // }
 };
 
@@ -50,15 +51,17 @@ const PLAYER_RANK_GIFT_URLS = {
   Sapphire: "https://www.amazon.co.jp/g/3BPSR23YZSUECZ?t=SvL",
   Ruby: "https://www.amazon.co.jp/g/ZAT9YWEC7SX8CN?t=SvL",
   Diamond: "https://www.amazon.co.jp/g/GFA8JZGW6MUTCN?t=SvL",
-  Master: "https://www.amazon.co.jp/g/XDZE2YSWEXDAC6?t=SvL"
+  Master: "https://www.amazon.co.jp/g/XDZE2YSWEXDAC6?t=SvL",
+  "Grand Master": "https://www.amazon.co.jp/g/AKF25YQUACPQCN?t=SvL"
 };
 
 const PLAYER_RANK_MILESTONES = [
-  { rank: "Platinum", threshold: 1600, playerFlag: "reachedRankPlatinum" },
+  { rank: "Platinum", threshold: 1650, playerFlag: "reachedRankPlatinum" },
   { rank: "Sapphire", threshold: 1700, playerFlag: "reachedRankSapphire" },
-  { rank: "Ruby", threshold: 1800, playerFlag: "reachedRankRuby" },
-  { rank: "Diamond", threshold: 1900, playerFlag: "reachedRankDiamond" },
-  { rank: "Master", threshold: 2000, playerFlag: "reachedRankMaster" }
+  { rank: "Ruby", threshold: 1750, playerFlag: "reachedRankRuby" },
+  { rank: "Diamond", threshold: 1800, playerFlag: "reachedRankDiamond" },
+  { rank: "Master", threshold: 1850, playerFlag: "reachedRankMaster" },
+  { rank: "Grand Master", threshold: 1900, playerFlag: "reachedRankGrandMaster" }
 ];
 
 const characters = [
@@ -156,7 +159,8 @@ function createPlayerRecord(name, createdAt = new Date().toISOString()) {
     reachedRankSapphire: false,
     reachedRankRuby: false,
     reachedRankDiamond: false,
-    reachedRankMaster: false
+    reachedRankMaster: false,
+    reachedRankGrandMaster: false
   };
 }
 
@@ -192,7 +196,8 @@ function appPlayerFromDb(row) {
     reachedRankSapphire: Boolean(row.reached_rank_sapphire),
     reachedRankRuby: Boolean(row.reached_rank_ruby),
     reachedRankDiamond: Boolean(row.reached_rank_diamond),
-    reachedRankMaster: Boolean(row.reached_rank_master)
+    reachedRankMaster: Boolean(row.reached_rank_master),
+    reachedRankGrandMaster: Boolean(row.reached_rank_grand_master)
   };
 }
 
@@ -264,7 +269,8 @@ function dbPlayerFromApp(player) {
     reached_rank_sapphire: Boolean(player.reachedRankSapphire),
     reached_rank_ruby: Boolean(player.reachedRankRuby),
     reached_rank_diamond: Boolean(player.reachedRankDiamond),
-    reached_rank_master: Boolean(player.reachedRankMaster)
+    reached_rank_master: Boolean(player.reachedRankMaster),
+    reached_rank_grand_master: Boolean(player.reachedRankGrandMaster)
   };
 }
 
@@ -538,14 +544,15 @@ function getWinRateText(wins, matches) {
 }
 
 function getPlayerRank(avgRating) {
-  if (avgRating >= 2000) return "Master";
-  if (avgRating >= 1900) return "Diamond";
-  if (avgRating >= 1800) return "Ruby";
+  if (avgRating >= 1900) return "Grand Master";
+  if (avgRating >= 1850) return "Master";
+  if (avgRating >= 1800) return "Diamond";
+  if (avgRating >= 1750) return "Ruby";
   if (avgRating >= 1700) return "Sapphire";
-  if (avgRating >= 1600) return "Platinum";
-  if (avgRating >= 1550) return "Gold";
-  if (avgRating >= 1450) return "Silver";
-  if (avgRating >= 1401) return "Bronze";
+  if (avgRating >= 1650) return "Platinum";
+  if (avgRating >= 1600) return "Gold";
+  if (avgRating >= 1500) return "Silver";
+  if (avgRating >= 1450) return "Bronze";
   return "Iron";
 }
 
@@ -578,6 +585,7 @@ function hasEnoughSetsForPlayerRank(ratings, playerId) {
 function getPlayerRankStyle(avgRating) {
   const rank = getPlayerRank(avgRating);
   const styles = {
+    "Grand Master": "border-fuchsia-500 bg-gradient-to-r from-black via-fuchsia-950 to-blue-950 text-fuchsia-300 shadow-fuchsia-200",
     Master: "border-red-950 bg-black text-red-500 shadow-red-200",
     Diamond: "border-cyan-300 bg-cyan-50 text-cyan-700 shadow-cyan-100",
     Ruby: "border-rose-300 bg-rose-50 text-rose-500 shadow-rose-100",
@@ -594,6 +602,7 @@ function getPlayerRankStyle(avgRating) {
 function getPlayerRankPanelStyle(avgRating) {
   const rank = getPlayerRank(avgRating);
   const styles = {
+    "Grand Master": "border-fuchsia-500 bg-gradient-to-r from-black via-fuchsia-950 to-blue-950 text-fuchsia-300 shadow-fuchsia-200/80",
     Master: "border-red-950 bg-black text-red-500 shadow-red-200/80",
     Diamond: "border-cyan-300 bg-cyan-50 text-cyan-700 shadow-cyan-100/80",
     Ruby: "border-rose-300 bg-rose-50 text-rose-500 shadow-rose-100/80",
@@ -621,9 +630,12 @@ function PlayerRankBadge({ avgRating, small = false, featured = false }) {
   );
 }
 
+function getStreakBonusExtraRate(streak) {
+  return Math.min(1, Math.max(0, streak) * 0.1);
+}
+
 function getStreakBonusMultiplier(streak) {
-  if (streak < 3) return 1;
-  return Math.min(1.5, 1 + streak * 0.05);
+  return 1 + getStreakBonusExtraRate(streak);
 }
 
 function getBestRatingForPlayer(data, playerId) {
@@ -1125,22 +1137,30 @@ function calculateMemberRatingChange({
   randomMatchFactor
 }) {
   if (won) {
-    const streakBonus = getStreakBonusMultiplier(nextStreak);
-    return Math.max(
+    const baseChange = Math.max(
       1,
       roundChange(
         (baseAbs * RATE_INTENSITY_MULTIPLIER + WIN_BONUS) *
           ruleFactor *
           gachiFactor *
           lowAverageFactor *
-          streakBonus *
           RATE_GLOBAL_MULTIPLIER *
           randomMatchFactor
       )
     );
+    const streakBonusChange = Math.max(
+      0,
+      roundChange(baseChange * getStreakBonusExtraRate(nextStreak))
+    );
+
+    return {
+      ratingChange: baseChange + streakBonusChange,
+      baseRatingChange: baseChange,
+      streakBonusChange
+    };
   }
 
-  return Math.min(
+  const baseChange = Math.min(
     -1,
     -roundChange(
       baseAbs *
@@ -1153,6 +1173,12 @@ function calculateMemberRatingChange({
         randomMatchFactor
     )
   );
+
+  return {
+    ratingChange: baseChange,
+    baseRatingChange: baseChange,
+    streakBonusChange: 0
+  };
 }
 
 function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam, scoreA, scoreB, isRandomMatch = false }) {
@@ -1205,7 +1231,7 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
     const nextLossStreak = won ? 0 : currentLossStreak + 1;
     const baseAbs = calculateBaseAbsChange(member.ratingRecord, won, expected, mult);
 
-    let change = calculateMemberRatingChange({
+    const changeResult = calculateMemberRatingChange({
       baseAbs,
       won,
       nextStreak,
@@ -1215,7 +1241,9 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
       randomMatchFactor
     });
 
-    change = clamp(change, -maxAbsChange, maxAbsChange);
+    const baseRatingChange = clamp(changeResult.baseRatingChange, -maxAbsChange, maxAbsChange);
+    const ratingChange = clamp(changeResult.ratingChange, -maxAbsChange, maxAbsChange);
+    const streakBonusChange = won ? Math.max(0, ratingChange - baseRatingChange) : 0;
 
     rawMembers.push({
       id: uid(),
@@ -1223,7 +1251,9 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
       playerId: member.playerId,
       characterName: member.characterName,
       ratingBefore: before,
-      ratingChange: change,
+      ratingChange,
+      baseRatingChange,
+      streakBonusChange,
       winStreakBefore: currentStreak,
       winStreakAfter: nextStreak,
       lossStreakBefore: currentLossStreak,
@@ -1236,10 +1266,10 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
   fullA.forEach(m => apply(m, "A", aWon, expA));
   fullB.forEach(m => apply(m, "B", !aWon, expB));
 
-  let totalChange = rawMembers.reduce((sum, member) => sum + member.ratingChange, 0);
+  let totalBaseChange = rawMembers.reduce((sum, member) => sum + member.baseRatingChange, 0);
 
-  if (totalChange < MIN_TOTAL_CHANGE) {
-    let needed = MIN_TOTAL_CHANGE - totalChange;
+  if (totalBaseChange < MIN_TOTAL_CHANGE) {
+    let needed = MIN_TOTAL_CHANGE - totalBaseChange;
     const winners = rawMembers.filter(member => member.won);
     const losers = rawMembers.filter(member => !member.won);
     let guard = 0;
@@ -1249,7 +1279,8 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
 
       for (const winner of winners) {
         if (needed <= 0) break;
-        if (winner.ratingChange < maxAbsChange) {
+        if (winner.baseRatingChange < maxAbsChange) {
+          winner.baseRatingChange += 1;
           winner.ratingChange += 1;
           needed -= 1;
           changed = true;
@@ -1258,7 +1289,8 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
 
       for (const loser of losers) {
         if (needed <= 0) break;
-        if (loser.ratingChange < -1) {
+        if (loser.baseRatingChange < -1) {
+          loser.baseRatingChange += 1;
           loser.ratingChange += 1;
           needed -= 1;
           changed = true;
@@ -1276,21 +1308,23 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
     for (const member of rawMembers) {
       if (member.playerId === giantKilling.winnerPlayerId && member.characterName === giantKilling.winnerCharacterName) {
         member.ratingChange += giantKilling.bonus;
+        member.baseRatingChange += giantKilling.bonus;
       }
 
       if (member.playerId === giantKilling.loserPlayerId && member.characterName === giantKilling.loserCharacterName) {
         member.ratingChange -= giantKilling.bonus;
+        member.baseRatingChange -= giantKilling.bonus;
       }
     }
   }
 
-  let totalChangeAfterBonus = rawMembers.reduce((sum, member) => sum + member.ratingChange, 0);
+  let totalBaseChangeAfterBonus = rawMembers.reduce((sum, member) => sum + member.baseRatingChange, 0);
   const losingStreakMembers = rawMembers.filter(
     member => !member.won && member.lossStreakAfter >= LOSING_STREAK_MIN_COUNT
   );
 
   for (const member of losingStreakMembers) {
-    const availablePenalty = totalChangeAfterBonus - MIN_TOTAL_CHANGE_AFTER_LOSING_STREAK;
+    const availablePenalty = totalBaseChangeAfterBonus - MIN_TOTAL_CHANGE_AFTER_LOSING_STREAK;
     if (availablePenalty <= 0) break;
 
     const requestedPenalty = (member.lossStreakAfter - 1) * LOSING_STREAK_PENALTY_PER_LOSS;
@@ -1299,8 +1333,9 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
     if (actualPenalty <= 0) continue;
 
     member.ratingChange -= actualPenalty;
+    member.baseRatingChange -= actualPenalty;
     member.losingStreakPenalty = actualPenalty;
-    totalChangeAfterBonus -= actualPenalty;
+    totalBaseChangeAfterBonus -= actualPenalty;
   }
 
   const members = rawMembers.map(member => ({
@@ -1345,7 +1380,8 @@ function applyMatch(data, form) {
     reachedRankSapphire: Boolean(player.reachedRankSapphire),
     reachedRankRuby: Boolean(player.reachedRankRuby),
     reachedRankDiamond: Boolean(player.reachedRankDiamond),
-    reachedRankMaster: Boolean(player.reachedRankMaster)
+    reachedRankMaster: Boolean(player.reachedRankMaster),
+    reachedRankGrandMaster: Boolean(player.reachedRankGrandMaster)
   }));
 
   for (const member of calculation.members) {
@@ -1440,6 +1476,72 @@ function applyMatch(data, form) {
   return { ...data, players: nextPlayers, ratings: updatedRatings, matches: [match, ...data.matches] };
 }
 
+
+function getMatchResultChangePreview(data, form) {
+  const calculation = calculateMatch({ data, ...form });
+  const updatedRatingsMap = new Map(data.ratings.map(rating => [rating.key, { ...rating }]));
+
+  for (const member of calculation.members) {
+    const key = ratingKey(member.playerId, member.characterName);
+    const current = updatedRatingsMap.get(key);
+    if (!current) continue;
+
+    updatedRatingsMap.set(key, {
+      ...current,
+      rating: member.ratingAfter,
+      matches: current.matches + 1,
+      wins: current.wins + (member.won ? 1 : 0),
+      losses: current.losses + (member.won ? 0 : 1),
+      winStreak: member.winStreakAfter,
+      highestRating: Math.max(current.highestRating, member.ratingAfter)
+    });
+  }
+
+  const updatedRatings = Array.from(updatedRatingsMap.values());
+  const tierChanges = calculation.members
+    .map(member => {
+      const beforeTier = getTier(member.ratingBefore);
+      const afterTier = getTier(member.ratingAfter);
+      if (beforeTier === afterTier) return null;
+
+      const player = data.players.find(item => item.id === member.playerId);
+      return {
+        id: `${member.id}-tier`,
+        kind: "tier",
+        playerName: player?.name || "不明",
+        characterName: member.characterName,
+        before: `Tier ${beforeTier}`,
+        after: `Tier ${afterTier}`
+      };
+    })
+    .filter(Boolean);
+
+  const changedPlayerIds = [...new Set(calculation.members.map(member => member.playerId))];
+  const rankChanges = changedPlayerIds
+    .map(playerId => {
+      if (!hasEnoughSetsForPlayerRank(updatedRatings, playerId)) return null;
+
+      const beforeAvg = getPlayerAverageRatingFromList(data.ratings, playerId);
+      const afterAvg = getPlayerAverageRatingFromList(updatedRatings, playerId);
+      const beforeRank = getPlayerRank(beforeAvg);
+      const afterRank = getPlayerRank(afterAvg);
+      if (beforeRank === afterRank) return null;
+
+      const player = data.players.find(item => item.id === playerId);
+      return {
+        id: `${playerId}-rank`,
+        kind: "rank",
+        playerName: player?.name || "不明",
+        before: beforeRank,
+        after: afterRank
+      };
+    })
+    .filter(Boolean);
+
+  return [...tierChanges, ...rankChanges];
+}
+
+
 function resetRatingStats(rating) {
   const baseRating = rating.baseRating ?? INITIAL_RATING;
 
@@ -1455,9 +1557,25 @@ function resetRatingStats(rating) {
   };
 }
 
+function resetPlayerMilestoneFlags(player) {
+  return {
+    ...player,
+    reachedTierS: false,
+    reachedTierSS: false,
+    reachedTierSSS: false,
+    reachedRankPlatinum: false,
+    reachedRankSapphire: false,
+    reachedRankRuby: false,
+    reachedRankDiamond: false,
+    reachedRankMaster: false,
+    reachedRankGrandMaster: false
+  };
+}
+
 function rebuildDataWithMatches(data, matchesNewestFirst) {
   const rebuilt = {
     ...data,
+    players: data.players.map(resetPlayerMilestoneFlags),
     ratings: data.ratings.map(resetRatingStats),
     matches: []
   };
@@ -2113,6 +2231,14 @@ function MatchInput({ data, commit, saving }) {
     : null;
   const shownResult = completedMatchFromData || (inputLocked ? data.matches[0] : null);
   const shownResultMembers = Array.isArray(shownResult?.members) ? shownResult.members : [];
+  const projectedRankTierChanges = (() => {
+    if (!matchStarted || inputLocked) return [];
+    try {
+      return getMatchResultChangePreview(data, form);
+    } catch (error) {
+      return [];
+    }
+  })();
 
   return (
     <div className="grid gap-5 lg:grid-cols-3">
@@ -2296,6 +2422,20 @@ function MatchInput({ data, commit, saving }) {
               <div className="text-sm font-black text-blue-600">{inputLocked ? "結果確定済み" : "試合結果入力"}</div>
               <p className="mt-1 text-xs font-bold text-slate-600">{inputLocked ? "次の試合を入力するには、右側のボタンを押してください。" : "試合が終わったら、勝者とスコアを選んで結果を確定してください。"}</p>
             </div>
+            {!inputLocked && projectedRankTierChanges.length > 0 && (
+              <div className="md:col-span-4 rounded-3xl border border-yellow-300 bg-yellow-50 p-4 text-sm font-black text-yellow-900 shadow-sm">
+                <div>Tierもしくはランクの変動</div>
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  {projectedRankTierChanges.map(change => (
+                    <div key={change.id} className="rounded-2xl border border-yellow-200 bg-white px-3 py-2">
+                      {change.kind === "tier"
+                        ? `${change.playerName} / ${change.characterName}: ${change.before} → ${change.after}`
+                        : `${change.playerName}: ${change.before} → ${change.after}`}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <label className="space-y-2">
               <span className="text-sm font-bold text-slate-600">勝者</span>
               <select value={winnerTeam} onChange={e => setWinnerTeam(e.target.value)} disabled={inputLocked} className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400 disabled:opacity-50">
@@ -2412,6 +2552,9 @@ function MatchInput({ data, commit, saving }) {
                       <span className="pt-1">/ {member.characterName}</span>
                     </div>
                     <div className="mt-1 flex items-center gap-2 text-xs font-bold text-slate-500">{member.ratingBefore} → {member.ratingAfter} <TierBadge rating={member.ratingAfter} /></div>
+                    {member.streakBonusChange > 0 && (
+                      <div className="mt-1 text-xs font-black text-emerald-600">連勝ボーナス +{member.streakBonusChange}</div>
+                    )}
                     {member.losingStreakPenalty > 0 && (
                       <div className="mt-1 text-xs font-black text-red-500">連敗補正 -{member.losingStreakPenalty}</div>
                     )}
@@ -2824,6 +2967,7 @@ function Stats({ data, ranking, totalRanking = [], refreshData, saving }) {
         "保存先：Supabase",
         "レート単位：プレイヤー × キャラ",
         "削除したプレイヤーは復元可能",
+        "試合取り消し時：ギフト到達フラグも残った履歴から再計算",
         "キャラ登録：1人5体まで"
       ]
     },
@@ -2845,9 +2989,10 @@ function Stats({ data, ranking, totalRanking = [], refreshData, saving }) {
         "勝利：レートプラス",
         "敗北：必ずマイナス",
         "2-0勝利：2勝制のみ変動1.1倍",
-        "3連勝以上：勝者だけ連勝ボーナス。上限は1.5倍",
-        "ガチマッチ：1on1で両者1700超えなら変動1.2倍",
+        "連勝ボーナス：本来もらえるレートに連勝数に応じた補正を加算。加算上限は10連勝まで。",
+        "ガチマッチ：1on1で両者1700超えなら変動が少し大きくなります。",
         "変動上限：個人戦±100、チーム戦±50。ただしジャイアントキリング補正は上限突破",
+        "連敗補正：連勝ボーナスを除いたレート増減の和が最低+5になる範囲で適用",
         "ジャイアントキリング：1on1でレート差200以上の低レート側勝利時、レート変動が激しくなる。"
       ]
     },
@@ -2859,8 +3004,10 @@ function Stats({ data, ranking, totalRanking = [], refreshData, saving }) {
         "ランダムマッチ：Tier選択→セット複数選択→1on1を自動作成。両者1700超えならランダムガチマッチ表示になります",
         "ランキング：プレイヤー名・キャラ名クリックでレート推移グラフ表示",
         "プレイヤー総合：3キャラ以上登録しているプレイヤーのみ表示。",
-        "ランク：Master 2000+ / Diamond 1900+ / Ruby 1800+ / Sapphire 1700+ / Platinum 1600+ / Gold 1550+ / Silver 1450+ / Bronze 1400+ / Iron 1400以下",
-        "ティア：SSS 2200+ / SS 2000+ / S 1800+ / A 1600+ / B 1400+ / C 1200+ / D 1001-1199 / E 1000以下"
+        "ランク：Grand Master 1900+ / Master 1850+ / Diamond 1800+ / Ruby 1750+ / Sapphire 1700+ / Platinum 1650+ / Gold 1600+ / Silver 1500+ / Bronze 1450+ / Iron 1450未満",
+        "ランク初到達報酬：Grand Master 7000円 / Master 5000円 / Diamond 3000円 / Ruby 2000円 / Sapphire 1000円 / Platinum 777円",
+        "ティア：SSS 2200+ / SS 2000+ / S 1800+ / A 1600+ / B 1400+ / C 1200+ / D 1001-1199 / E 1000以下",
+        "ティア初到達報酬：SSS 3000円 / SS 1000円 / S 500円",
       ]
     }
   ];
