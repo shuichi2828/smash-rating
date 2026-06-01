@@ -6,7 +6,7 @@ import { supabase } from "./lib/supabase";
 // Smash Rating App MVP
 // - Supabase synced version
 // - Black/blue visual design
-// - Rating unit: Player × Character
+// - Rating unit: Plaxyer × Character
 // - Modes: 1v1 / 2v2
 // - Rules: Single game as main rule, or BO3 as optional rule
 // - Elo-based rating: upset wins move a lot, expected wins move a little
@@ -47,12 +47,12 @@ const PLAYER_RANK_GIFT_URLS_BY_PLAYER = {
 };
 
 const PLAYER_RANK_GIFT_URLS = {
-  Platinum: "https://www.amazon.co.jp/g/DQSD2QKLWHXBCP?t=SvL",
-  Sapphire: "https://www.amazon.co.jp/g/3BPSR23YZSUECZ?t=SvL",
-  Ruby: "https://www.amazon.co.jp/g/ZAT9YWEC7SX8CN?t=SvL",
-  Diamond: "https://www.amazon.co.jp/g/GFA8JZGW6MUTCN?t=SvL",
+  Platinum: "",
+  Sapphire: "",
+  Ruby: "",
+  Diamond: "",
   Emerald: "", // 4000円。あとからここにギフトURLを追加
-  Master: "https://www.amazon.co.jp/g/XDZE2YSWEXDAC6?t=SvL",
+  Master: "",
   "Grand Master": ""
 };
 
