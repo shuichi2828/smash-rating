@@ -51,6 +51,7 @@ const PLAYER_RANK_GIFT_URLS = {
   Sapphire: "https://www.amazon.co.jp/g/3BPSR23YZSUECZ?t=SvL",
   Ruby: "https://www.amazon.co.jp/g/ZAT9YWEC7SX8CN?t=SvL",
   Diamond: "https://www.amazon.co.jp/g/GFA8JZGW6MUTCN?t=SvL",
+  Emerald: "https://www.amazon.co.jp/g/ZF4LDS9HGRFHCB?t=SvL", // 4000円。あとからここにギフトURLを追加
   Master: "https://www.amazon.co.jp/g/XDZE2YSWEXDAC6?t=SvL",
   "Grand Master": "https://www.amazon.co.jp/g/AKF25YQUACPQCN?t=SvL"
 };
@@ -60,8 +61,9 @@ const PLAYER_RANK_MILESTONES = [
   { rank: "Sapphire", threshold: 1700, playerFlag: "reachedRankSapphire" },
   { rank: "Ruby", threshold: 1750, playerFlag: "reachedRankRuby" },
   { rank: "Diamond", threshold: 1800, playerFlag: "reachedRankDiamond" },
-  { rank: "Master", threshold: 1850, playerFlag: "reachedRankMaster" },
-  { rank: "Grand Master", threshold: 1900, playerFlag: "reachedRankGrandMaster" }
+  { rank: "Emerald", threshold: 1850, playerFlag: "reachedRankEmerald" },
+  { rank: "Master", threshold: 1900, playerFlag: "reachedRankMaster" },
+  { rank: "Grand Master", threshold: 2000, playerFlag: "reachedRankGrandMaster" }
 ];
 
 const characters = [
@@ -159,6 +161,7 @@ function createPlayerRecord(name, createdAt = new Date().toISOString()) {
     reachedRankSapphire: false,
     reachedRankRuby: false,
     reachedRankDiamond: false,
+    reachedRankEmerald: false,
     reachedRankMaster: false,
     reachedRankGrandMaster: false
   };
@@ -196,6 +199,7 @@ function appPlayerFromDb(row) {
     reachedRankSapphire: Boolean(row.reached_rank_sapphire),
     reachedRankRuby: Boolean(row.reached_rank_ruby),
     reachedRankDiamond: Boolean(row.reached_rank_diamond),
+    reachedRankEmerald: Boolean(row.reached_rank_emerald),
     reachedRankMaster: Boolean(row.reached_rank_master),
     reachedRankGrandMaster: Boolean(row.reached_rank_grand_master)
   };
@@ -269,6 +273,7 @@ function dbPlayerFromApp(player) {
     reached_rank_sapphire: Boolean(player.reachedRankSapphire),
     reached_rank_ruby: Boolean(player.reachedRankRuby),
     reached_rank_diamond: Boolean(player.reachedRankDiamond),
+    reached_rank_emerald: Boolean(player.reachedRankEmerald),
     reached_rank_master: Boolean(player.reachedRankMaster),
     reached_rank_grand_master: Boolean(player.reachedRankGrandMaster)
   };
@@ -529,7 +534,7 @@ function getTierBarColor(rating) {
     SSS: "bg-gradient-to-r from-black via-red-700 to-black",
     SS: "bg-red-500",
     S: "bg-pink-500",
-    A: "bg-blue-500",
+    A: "bg-slate-500",
     B: "bg-emerald-500",
     C: "bg-amber-500",
     D: "bg-slate-400",
@@ -544,8 +549,9 @@ function getWinRateText(wins, matches) {
 }
 
 function getPlayerRank(avgRating) {
-  if (avgRating >= 1900) return "Grand Master";
-  if (avgRating >= 1850) return "Master";
+  if (avgRating >= 2000) return "Grand Master";
+  if (avgRating >= 1900) return "Master";
+  if (avgRating >= 1850) return "Emerald";
   if (avgRating >= 1800) return "Diamond";
   if (avgRating >= 1750) return "Ruby";
   if (avgRating >= 1700) return "Sapphire";
@@ -587,9 +593,10 @@ function getPlayerRankStyle(avgRating) {
   const styles = {
     "Grand Master": "border-fuchsia-500 bg-gradient-to-r from-black via-fuchsia-950 to-blue-950 text-fuchsia-300 shadow-fuchsia-200",
     Master: "border-red-950 bg-black text-red-500 shadow-red-200",
+    Emerald: "border-emerald-400 bg-emerald-50 text-emerald-700 shadow-emerald-100",
     Diamond: "border-cyan-300 bg-cyan-50 text-cyan-700 shadow-cyan-100",
     Ruby: "border-rose-300 bg-rose-50 text-rose-500 shadow-rose-100",
-    Sapphire: "border-blue-500 bg-blue-50 text-blue-700 shadow-blue-100",
+    Sapphire: "border-slate-900 bg-slate-50 text-slate-700 shadow-slate-100",
     Platinum: "border-slate-300 bg-gradient-to-r from-slate-100 via-white to-slate-200 text-slate-700 shadow-slate-100",
     Gold: "border-yellow-400 bg-yellow-50 text-yellow-700 shadow-yellow-100",
     Silver: "border-zinc-300 bg-zinc-100 text-zinc-600 shadow-zinc-100",
@@ -604,9 +611,10 @@ function getPlayerRankPanelStyle(avgRating) {
   const styles = {
     "Grand Master": "border-fuchsia-500 bg-gradient-to-r from-black via-fuchsia-950 to-blue-950 text-fuchsia-300 shadow-fuchsia-200/80",
     Master: "border-red-950 bg-black text-red-500 shadow-red-200/80",
+    Emerald: "border-emerald-400 bg-emerald-50 text-emerald-700 shadow-emerald-100/80",
     Diamond: "border-cyan-300 bg-cyan-50 text-cyan-700 shadow-cyan-100/80",
     Ruby: "border-rose-300 bg-rose-50 text-rose-500 shadow-rose-100/80",
-    Sapphire: "border-blue-500 bg-blue-50 text-blue-700 shadow-blue-100/80",
+    Sapphire: "border-slate-900 bg-slate-50 text-slate-700 shadow-slate-100/80",
     Platinum: "border-slate-300 bg-gradient-to-r from-slate-100 via-white to-slate-200 text-slate-700 shadow-slate-100/80",
     Gold: "border-yellow-400 bg-yellow-50 text-yellow-700 shadow-yellow-100/80",
     Silver: "border-zinc-300 bg-zinc-100 text-zinc-600 shadow-zinc-100/80",
@@ -697,7 +705,7 @@ function PlayerIdentity({ data, playerId, rating, name, rankFeatured = false, na
   if (rankPanel && shouldShowPlayerRank) {
     return (
       <div className={`min-w-0 ${nameClassName}`}>
-        <div className={`rounded-3xl border-2 px-4 py-3 shadow-md ${getPlayerRankPanelStyle(playerRate)}`}>
+        <div className={`rounded-2xl border-2 px-4 py-3 shadow-md ${getPlayerRankPanelStyle(playerRate)}`}>
           <div className="truncate text-2xl font-black tracking-tight">
             {displayName}
           </div>
@@ -829,16 +837,16 @@ function RatingHistoryChart({ data, rating, onClose }) {
   const totalChange = latest - first;
 
   return (
-    <div className="rounded-[1.75rem] border border-blue-200 bg-white p-4 shadow-sm">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <div className="text-xs font-black uppercase tracking-wider text-blue-500">Rating History</div>
+          <div className="text-xs font-black uppercase tracking-wider text-slate-500">Rating History</div>
           <div className="mt-1 flex flex-wrap items-start gap-2 text-2xl font-black text-slate-950">
             <PlayerIdentity data={data} playerId={rating.playerId} name={player?.name || "不明"} rating={rating.rating} />
             <span className="pt-1">/ {rating.characterName}</span>
           </div>
           <div className="mt-2 flex flex-wrap gap-2 text-xs font-black">
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-700">現在 {rating.rating}</span>
+            <span className="rounded-full bg-slate-50 px-3 py-1 text-slate-700">現在 {rating.rating}</span>
             <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">試合 {rating.matches}</span>
             <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">勝率 {getWinRateText(rating.wins, rating.matches)}</span>
             <span className={classNames("rounded-full px-3 py-1", totalChange >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700")}>
@@ -854,7 +862,7 @@ function RatingHistoryChart({ data, rating, onClose }) {
         </button>
       </div>
 
-      <div className="mt-4 overflow-x-auto rounded-3xl border border-blue-100 bg-blue-50/40 p-3">
+      <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50/40 p-3">
         <svg viewBox={`0 0 ${width} ${height}`} className="min-w-[720px]">
           <rect x="0" y="0" width={width} height={height} rx="20" fill="white" />
 
@@ -918,7 +926,7 @@ function RatingHistoryChart({ data, rating, onClose }) {
         {history.matches.slice(-6).reverse().map((item, index) => {
           const giantKilling = getGiantKillingFromMatch(item.match);
           return (
-            <div key={`${item.match.id}-${index}`} className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3 text-sm">
+            <div key={`${item.match.id}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
               <div className="flex items-center justify-between gap-2">
                 <div className="font-black text-slate-800">
                   {new Date(item.createdAt).toLocaleDateString()} / {item.won ? "勝ち" : "負け"}
@@ -950,6 +958,10 @@ function getGiantKillingBonus(ratingDiff) {
   return Math.floor(ratingDiff * GIANT_KILLING_BONUS_MULTIPLIER);
 }
 
+function getGiantKillingLoserPenalty(bonus) {
+  return Math.floor(bonus * 0.75);
+}
+
 function getGiantKillingResult({ mode, fullA, fullB, winnerTeam }) {
   if (mode !== "1v1" || fullA.length !== 1 || fullB.length !== 1) return null;
 
@@ -971,6 +983,7 @@ function getGiantKillingResult({ mode, fullA, fullB, winnerTeam }) {
   return {
     message: "ジャイアントキリング！",
     bonus,
+    loserPenalty: getGiantKillingLoserPenalty(bonus),
     ratingDiff: Math.round(ratingDiff),
     winnerTeam: lowerTeam,
     winnerPlayerId: winner.playerId,
@@ -1001,6 +1014,7 @@ function getGiantKillingFromMatch(match) {
   return {
     message: "ジャイアントキリング！",
     bonus,
+    loserPenalty: getGiantKillingLoserPenalty(bonus),
     ratingDiff: Math.round(ratingDiff),
     winnerTeam: lowerTeam,
     winnerPlayerId: winner.playerId,
@@ -1312,8 +1326,9 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
       }
 
       if (member.playerId === giantKilling.loserPlayerId && member.characterName === giantKilling.loserCharacterName) {
-        member.ratingChange -= giantKilling.bonus;
-        member.baseRatingChange -= giantKilling.bonus;
+        const loserPenalty = giantKilling.loserPenalty ?? getGiantKillingLoserPenalty(giantKilling.bonus);
+        member.ratingChange -= loserPenalty;
+        member.baseRatingChange -= loserPenalty;
       }
     }
   }
@@ -1380,6 +1395,7 @@ function applyMatch(data, form) {
     reachedRankSapphire: Boolean(player.reachedRankSapphire),
     reachedRankRuby: Boolean(player.reachedRankRuby),
     reachedRankDiamond: Boolean(player.reachedRankDiamond),
+    reachedRankEmerald: Boolean(player.reachedRankEmerald),
     reachedRankMaster: Boolean(player.reachedRankMaster),
     reachedRankGrandMaster: Boolean(player.reachedRankGrandMaster)
   }));
@@ -1567,6 +1583,7 @@ function resetPlayerMilestoneFlags(player) {
     reachedRankSapphire: false,
     reachedRankRuby: false,
     reachedRankDiamond: false,
+    reachedRankEmerald: false,
     reachedRankMaster: false,
     reachedRankGrandMaster: false
   };
@@ -1629,12 +1646,11 @@ function classNames(...items) {
 
 function AppLogo() {
   return (
-    <div className="relative grid h-16 w-16 shrink-0 place-items-center rounded-[1.4rem] border border-blue-400/60 bg-gradient-to-br from-slate-950 via-blue-950 to-blue-600 shadow-xl shadow-blue-950/60 ring-1 ring-white/10">
-      <div className="absolute left-2 top-2 h-5 w-5 rounded-full bg-blue-300/70 blur-sm" />
-      <div className="absolute bottom-2 right-2 h-7 w-7 rounded-full bg-blue-700/60 blur-md" />
-      <Swords className="relative h-8 w-8 text-white drop-shadow-lg" />
-      <span className="absolute -bottom-2 rounded-full border border-blue-300/70 bg-slate-950 px-2 py-0.5 text-[10px] font-black tracking-widest text-blue-200 shadow-md">
-        VS
+    <div className="relative grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-slate-900 bg-slate-950 shadow-sm ring-4 ring-white">
+      <div className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-lime-400" />
+      <Swords className="relative h-7 w-7 text-white" />
+      <span className="absolute -bottom-2 rounded-md border border-slate-900 bg-white px-1.5 py-0.5 text-[9px] font-black tracking-widest text-slate-950">
+        IGS
       </span>
     </div>
   );
@@ -1662,14 +1678,14 @@ function SetLabel({ data, rating }) {
         </div>
       )}
       <PlayerIdentity data={data} playerId={rating.playerId} name={player?.name || "不明"} rating={rating.rating} />
-      <div className="mt-1 truncate text-sm font-semibold text-blue-700">{rating.characterName}</div>
+      <div className="mt-1 truncate text-sm font-semibold text-slate-700">{rating.characterName}</div>
     </div>
   );
 }
 
 function AppShellCard({ children, className = "" }) {
   return (
-    <section className={`rounded-3xl border border-blue-200/80 bg-white/95 p-5 shadow-xl shadow-blue-950/20 backdrop-blur ${className}`}>
+    <section className={`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ${className}`}>
       {children}
     </section>
   );
@@ -1849,34 +1865,36 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-black via-slate-950 to-blue-950 p-6">
-        <div className="rounded-3xl border border-blue-500/40 bg-slate-950/90 p-8 text-center shadow-2xl shadow-blue-950/60">
-          <Cloud className="mx-auto h-10 w-10 text-blue-300" />
-          <h1 className="mt-4 text-2xl font-black text-white">Supabaseから読み込み中...</h1>
-          <p className="mt-2 text-sm font-bold text-blue-200">少し待ってください。</p>
+      <div className="flex min-h-screen items-center justify-center bg-[#f4f5f7] p-6">
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+          <Cloud className="mx-auto h-10 w-10 text-slate-900" />
+          <h1 className="mt-4 text-2xl font-black text-slate-950">Supabaseから読み込み中...</h1>
+          <p className="mt-2 text-sm font-bold text-slate-500">少し待ってください。</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-slate-950 to-blue-950 text-slate-900">
-      <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-8">
-        <header className="overflow-hidden rounded-[2rem] border border-blue-500/30 bg-slate-950/90 shadow-2xl shadow-blue-950/40">
-          <div className="relative p-6 md:p-8">
-            <div className="absolute right-0 top-0 h-48 w-48 rounded-bl-full bg-blue-500/20 blur-sm" />
-            <div className="absolute left-10 top-0 h-24 w-24 rounded-full bg-blue-400/10 blur-2xl" />
-            <div className="relative flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
+    <div className="min-h-screen bg-[#f4f5f7] text-slate-950">
+      <div className="mx-auto max-w-7xl space-y-5 p-4 md:p-6">
+        <header className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 bg-slate-950 px-5 py-3 text-xs font-black uppercase tracking-[0.24em] text-white">
+            Player rankings / IGS Battle Board
+          </div>
+          <div className="p-5 md:p-6">
+            <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
               <div className="flex items-center gap-4">
                 <AppLogo />
                 <div>
-                  <div className="mb-1 inline-flex rounded-full border border-blue-400/40 bg-blue-500/10 px-3 py-1 text-xs font-black tracking-widest text-blue-200">
-                    IGS BATTLE BOARD
+                  <div className="mb-1 inline-flex rounded-md border border-slate-300 bg-slate-100 px-2.5 py-1 text-xs font-black tracking-widest text-slate-700">
+                    UPSETS.GG STYLE
                   </div>
-                  <h1 className="text-3xl font-black tracking-tight text-white md:text-5xl">IGS Smash Rating</h1>
+                  <h1 className="text-3xl font-black tracking-tight text-slate-950 md:text-5xl">IGS Smash Rating</h1>
+                  <p className="mt-1 text-sm font-bold text-slate-500">Rankings, matches, history, and player stats in a compact leaderboard layout.</p>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-2 rounded-3xl border border-blue-400/30 bg-black/35 p-3 text-center backdrop-blur">
+              <div className="grid grid-cols-3 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2 text-center">
                 <MiniStat label="Players" value={activePlayersOf(data).length} />
                 <MiniStat label="Sets" value={data.ratings.length} />
                 <MiniStat label="Matches" value={data.matches.length} />
@@ -1886,12 +1904,12 @@ export default function App() {
         </header>
 
         {(saving || errorMessage) && (
-          <div className={`rounded-3xl border p-4 text-sm font-bold shadow-lg ${errorMessage ? "border-red-400/40 bg-red-950/80 text-red-200 shadow-red-950/30" : "border-blue-400/40 bg-blue-950/80 text-blue-100 shadow-blue-950/30"}`}>
+          <div className={`rounded-2xl border p-4 text-sm font-bold shadow-sm ${errorMessage ? "border-red-200 bg-red-50 text-red-700" : "border-slate-200 bg-white text-slate-700"}`}>
             {errorMessage || "Supabaseに保存中..."}
           </div>
         )}
 
-        <nav className="grid grid-cols-2 gap-2 md:grid-cols-5">
+        <nav className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm md:grid-cols-5">
           {[
             ["match", "試合入力", Plus],
             ["ranking", "ランキング", Trophy],
@@ -1903,11 +1921,11 @@ export default function App() {
               key={key}
               onClick={() => setTab(key)}
               className={classNames(
-                "rounded-2xl border px-4 py-3 font-bold transition",
+                "rounded-xl border px-4 py-3 font-black transition",
                 "flex items-center justify-center gap-2",
                 tab === key
-                  ? "border-blue-400 bg-blue-600 text-white shadow-lg shadow-blue-900/50"
-                  : "border-blue-500/20 bg-slate-950/80 text-blue-100 hover:border-blue-400 hover:bg-blue-950 hover:text-white"
+                  ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                  : "border-transparent bg-white text-slate-600 hover:border-slate-200 hover:bg-slate-100 hover:text-slate-950"
               )}
             >
               <Icon className="h-4 w-4" /> {label}
@@ -1954,9 +1972,9 @@ export default function App() {
 
 function MiniStat({ label, value }) {
   return (
-    <div className="rounded-2xl border border-blue-400/20 bg-slate-950/80 px-4 py-3 shadow-sm">
-      <div className="text-xs font-black uppercase tracking-wider text-blue-300">{label}</div>
-      <div className="text-2xl font-black text-white">{value}</div>
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+      <div className="text-xs font-black uppercase tracking-wider text-slate-400">{label}</div>
+      <div className="text-2xl font-black text-slate-950">{value}</div>
     </div>
   );
 }
@@ -2245,7 +2263,7 @@ function MatchInput({ data, commit, saving }) {
       <AppShellCard className="lg:col-span-2 space-y-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="flex items-center gap-2 text-blue-600">
+            <div className="flex items-center gap-2 text-slate-950">
               <Swords className="h-5 w-5" />
               <p className="text-sm font-black uppercase tracking-wider">Battle Setup</p>
             </div>
@@ -2254,20 +2272,20 @@ function MatchInput({ data, commit, saving }) {
           </div>
 
           <div className="grid gap-2 md:grid-cols-2">
-            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-blue-100 bg-blue-50 p-1.5">
+            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1.5">
               {[["single", "1勝制"], ["bo3", "2勝制"]].map(([value, label]) => (
-                <button key={value} onClick={() => { setRule(value); if (isRandomMatch) setIsRandomMatch(false); }} disabled={setupLocked} className={classNames("min-h-11 rounded-xl px-4 py-2 text-sm font-black transition disabled:opacity-50", rule === value ? "bg-blue-600 text-white shadow" : "text-blue-700 hover:bg-white")}>{label}</button>
+                <button key={value} onClick={() => { setRule(value); if (isRandomMatch) setIsRandomMatch(false); }} disabled={setupLocked} className={classNames("min-h-11 rounded-xl px-4 py-2 text-sm font-black transition disabled:opacity-50", rule === value ? "bg-slate-950 text-white shadow" : "text-slate-700 hover:bg-white")}>{label}</button>
               ))}
             </div>
-            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-blue-100 bg-blue-50 p-1.5">
+            <div className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1.5">
               {[["1v1", "1on1"], ["2v2", "2on2"]].map(([value, label]) => (
-                <button key={value} onClick={() => { setMode(value); if (isRandomMatch) setIsRandomMatch(false); }} disabled={setupLocked} className={classNames("min-h-11 rounded-xl px-4 py-2 text-sm font-black transition disabled:opacity-50", mode === value ? "bg-blue-600 text-white shadow" : "text-blue-700 hover:bg-white")}>{label}</button>
+                <button key={value} onClick={() => { setMode(value); if (isRandomMatch) setIsRandomMatch(false); }} disabled={setupLocked} className={classNames("min-h-11 rounded-xl px-4 py-2 text-sm font-black transition disabled:opacity-50", mode === value ? "bg-slate-950 text-white shadow" : "text-slate-700 hover:bg-white")}>{label}</button>
               ))}
             </div>
           </div>
         </div>
 
-        <div className="rounded-3xl border border-indigo-100 bg-indigo-50/50 p-4">
+        <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
           <button
             type="button"
             onClick={() => setRandomPanelOpen(current => !current)}
@@ -2312,11 +2330,11 @@ function MatchInput({ data, commit, saving }) {
                     ))}
                   </div>
 
-                  <div className="max-h-56 space-y-2 overflow-auto rounded-3xl border border-indigo-100 bg-white p-3">
+                  <div className="max-h-56 space-y-2 overflow-auto rounded-2xl border border-indigo-100 bg-white p-3">
                     {randomMatchEligibleSets.map(rating => {
                       const player = data.players.find(p => p.id === rating.playerId);
                       return (
-                        <label key={rating.key} className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 px-3 py-2 transition hover:bg-blue-50">
+                        <label key={rating.key} className="flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 transition hover:bg-slate-50">
                           <div className="flex items-center gap-2">
                             <input type="checkbox" checked={randomMatchSelectedKeys.includes(rating.key)} onChange={() => toggleRandomMatchSet(rating.key)} disabled={setupLocked} className="accent-indigo-600" />
                             <div className="min-w-0">
@@ -2353,7 +2371,7 @@ function MatchInput({ data, commit, saving }) {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: -8 }}
                 className={classNames(
-                  "mt-3 rounded-3xl border p-4 text-center text-xl font-black shadow-sm",
+                  "mt-3 rounded-2xl border p-4 text-center text-xl font-black shadow-sm",
                   isRandomGachiPreview
                     ? "border-red-700 bg-black text-red-500 shadow-red-200"
                     : "border-indigo-300 bg-indigo-50 text-indigo-800"
@@ -2390,7 +2408,7 @@ function MatchInput({ data, commit, saving }) {
                     ? "border-yellow-300 bg-yellow-400 text-slate-950 shadow-yellow-200"
                     : isGachiPreview
                     ? "border-red-300 bg-red-600 text-white shadow-red-200"
-                    : "border-blue-200 bg-white text-blue-600"
+                    : "border-slate-200 bg-white text-slate-950"
               )}
             >
               {isRandomGachiPreview ? "ランダムガチマッチ VS" : isRandomMatch ? "ランダムマッチ VS" : isGiantKillingPreview ? "ジャイアントキリング対象 VS" : isGachiPreview ? "ガチマッチ VS" : "VS"}
@@ -2400,31 +2418,31 @@ function MatchInput({ data, commit, saving }) {
         </div>
 
         {!resultInputOpen ? (
-          <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <div className="text-xl  font-black text-red-600">！必ず入力前にローディング！</div>
+                <div className="text-xl font-black text-red-600">！必ずローディング！</div>
                 <p className="mt-1 text-sm font-bold text-slate-600">対戦相手とルールを確認してから、試合開始を押してください。開始後に勝者とスコアを入力できます。</p>
               </div>
               <button
                 type="button"
                 onClick={startMatch}
                 disabled={!hasEnoughSets || saving}
-                className="min-h-11 rounded-2xl bg-slate-950 px-6 py-3 font-black text-white shadow-lg shadow-blue-200 transition hover:bg-blue-950 disabled:bg-slate-300 disabled:shadow-none"
+                className="min-h-11 rounded-2xl bg-slate-950 px-6 py-3 font-black text-white shadow-lg shadow-slate-200 transition hover:bg-slate-800 disabled:bg-slate-300 disabled:shadow-none"
               >
                 試合開始
               </button>
             </div>
           </div>
         ) : (
-          <div className="grid gap-3 rounded-3xl border border-blue-100 bg-blue-50/70 p-4 md:grid-cols-4">
-            <div className="md:col-span-4 rounded-2xl border border-blue-100 bg-white px-4 py-3">
-              <div className="text-sm font-black text-blue-600">{inputLocked ? "結果確定済み" : "試合結果入力"}</div>
+          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-4">
+            <div className="md:col-span-4 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <div className="text-sm font-black text-slate-950">{inputLocked ? "結果確定済み" : "試合結果入力"}</div>
               <p className="mt-1 text-xs font-bold text-slate-600">{inputLocked ? "次の試合を入力するには、右側のボタンを押してください。" : "試合が終わったら、勝者とスコアを選んで結果を確定してください。"}</p>
             </div>
             {!inputLocked && projectedRankTierChanges.length > 0 && (
-              <div className="md:col-span-4 rounded-3xl border border-yellow-300 bg-yellow-50 p-4 text-sm font-black text-yellow-900 shadow-sm">
-                <div>Tierもしくはランクの変動</div>
+              <div className="md:col-span-4 rounded-2xl border border-yellow-300 bg-yellow-50 p-4 text-sm font-black text-yellow-900 shadow-sm">
+                <div>この結果を確定すると、Tierまたはランクが変動します。</div>
                 <div className="mt-2 grid gap-2 md:grid-cols-2">
                   {projectedRankTierChanges.map(change => (
                     <div key={change.id} className="rounded-2xl border border-yellow-200 bg-white px-3 py-2">
@@ -2438,14 +2456,14 @@ function MatchInput({ data, commit, saving }) {
             )}
             <label className="space-y-2">
               <span className="text-sm font-bold text-slate-600">勝者</span>
-              <select value={winnerTeam} onChange={e => setWinnerTeam(e.target.value)} disabled={inputLocked} className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400 disabled:opacity-50">
+              <select value={winnerTeam} onChange={e => setWinnerTeam(e.target.value)} disabled={inputLocked} className="w-full rounded-2xl border border-slate-200 bg-white p-3 font-bold text-slate-800 outline-none focus:border-slate-900 disabled:opacity-50">
                 <option value="A">Team A</option>
                 <option value="B">Team B</option>
               </select>
             </label>
             <label className="space-y-2">
               <span className="text-sm font-bold text-slate-600">スコア</span>
-              <select value={score} onChange={e => setScore(e.target.value)} disabled={inputLocked} className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400 disabled:opacity-50">
+              <select value={score} onChange={e => setScore(e.target.value)} disabled={inputLocked} className="w-full rounded-2xl border border-slate-200 bg-white p-3 font-bold text-slate-800 outline-none focus:border-slate-900 disabled:opacity-50">
                 {rule === "single" ? (
                   <option value="1-0">1 - 0</option>
                 ) : (
@@ -2470,7 +2488,7 @@ function MatchInput({ data, commit, saving }) {
               <button
                 onClick={submit}
                 disabled={!hasEnoughSets || isSubmitting || inputLocked || saving}
-                className="min-h-11 w-full rounded-2xl bg-blue-600 p-3 font-black text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 disabled:bg-slate-300 disabled:shadow-none"
+                className="min-h-11 w-full rounded-2xl bg-slate-950 p-3 font-black text-white shadow-lg shadow-slate-200 transition hover:bg-slate-800 disabled:bg-slate-300 disabled:shadow-none"
               >
                 {isSubmitting || saving ? "処理中..." : inputLocked ? "確定済み" : "試合結果を確定"}
               </button>
@@ -2478,11 +2496,11 @@ function MatchInput({ data, commit, saving }) {
           </div>
         )}
 
-        <div className="rounded-3xl border border-blue-100 bg-white p-4">
-          <div className="text-sm font-black text-blue-600">本日の上限：{getMatchRuleLabel(rule)}は1人{dailyLimit}回まで</div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="text-sm font-black text-slate-950">本日の上限：{getMatchRuleLabel(rule)}は1人{dailyLimit}回まで</div>
           <div className="mt-2 grid gap-2 md:grid-cols-2">
             {dailyLimitRows.map(row => (
-              <div key={row.playerId} className={classNames("flex items-center justify-between gap-3 rounded-2xl border px-3 py-2 text-sm font-bold", row.count >= row.limit ? "border-red-200 bg-red-50 text-red-600" : "border-blue-100 bg-blue-50 text-slate-600")}>
+              <div key={row.playerId} className={classNames("flex items-center justify-between gap-3 rounded-2xl border px-3 py-2 text-sm font-bold", row.count >= row.limit ? "border-red-200 bg-red-50 text-red-600" : "border-slate-200 bg-slate-50 text-slate-600")}>
                 <PlayerIdentity data={data} playerId={row.playerId} name={row.name} />
                 <span className="shrink-0">{row.count}/{row.limit}</span>
               </div>
@@ -2492,31 +2510,31 @@ function MatchInput({ data, commit, saving }) {
       </AppShellCard>
 
       <AppShellCard>
-        <div className="flex items-center gap-2 text-blue-600">
+        <div className="flex items-center gap-2 text-slate-950">
           <Medal className="h-5 w-5" />
           <h3 className="text-xl font-black text-slate-950">今回のレート変動</h3>
         </div>
         {!shownResult ? (
-          <div className="mt-4 rounded-3xl border border-dashed border-blue-200 bg-blue-50/70 p-5 text-sm font-medium text-slate-500">
+          <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm font-medium text-slate-500">
             {matchStarted ? "試合結果を確定すると、ここに増減が表示されます。" : "試合開始後、結果を確定するとここに増減が表示されます。"}
           </div>
         ) : (
           <div className="mt-4 space-y-3">
-            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-700">{getRandomMatchLabel(shownResult) ? `${getRandomMatchLabel(shownResult)} / ` : ""}{getMatchRuleLabel(inferRuleFromMatch(shownResult))} / {shownResult.mode} / Team {shownResult.winnerTeam} 勝利 / {shownResult.scoreA}-{shownResult.scoreB}</div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold text-slate-700">{getRandomMatchLabel(shownResult) ? `${getRandomMatchLabel(shownResult)} / ` : ""}{getMatchRuleLabel(inferRuleFromMatch(shownResult))} / {shownResult.mode} / Team {shownResult.winnerTeam} 勝利 / {shownResult.scoreA}-{shownResult.scoreB}</div>
             {shownResult.isRandomMatch && (
-              <div className={`rounded-3xl border p-4 text-sm font-black ${getRandomMatchBadgeClass(shownResult)}`}>
+              <div className={`rounded-2xl border p-4 text-sm font-black ${getRandomMatchBadgeClass(shownResult)}`}>
                  {getRandomMatchLabel(shownResult)}
               </div>
             )}
             {getGiantKillingFromMatch(shownResult) && (
-              <div className="rounded-3xl border border-yellow-300 bg-yellow-50 p-4 text-sm font-black text-yellow-800 shadow-sm">
-                ⚔️ ジャイアントキリング！ レート差{getGiantKillingFromMatch(shownResult).ratingDiff}。補正値{getGiantKillingFromMatch(shownResult).bonus}を勝者にプラス、敗者にマイナスしました。
+              <div className="rounded-2xl border border-yellow-300 bg-yellow-50 p-4 text-sm font-black text-yellow-800 shadow-sm">
+                ⚔️ ジャイアントキリング！ レート差{getGiantKillingFromMatch(shownResult).ratingDiff}。勝者+{getGiantKillingFromMatch(shownResult).bonus}、敗者-{getGiantKillingFromMatch(shownResult).loserPenalty}の補正を適用しました。
               </div>
             )}
             {shownResult.milestoneMessages?.length > 0 && (
               <div className="space-y-2">
                 {shownResult.milestoneMessages.map(item => (
-                  <div key={item.id} className="rounded-3xl border border-yellow-200 bg-yellow-50 p-4 text-sm font-black text-yellow-800 shadow-sm">
+                  <div key={item.id} className="rounded-2xl border border-yellow-200 bg-yellow-50 p-4 text-sm font-black text-yellow-800 shadow-sm">
                     <div className="flex flex-wrap items-start gap-2">
                       <span>🎉</span>
                       <PlayerIdentity data={data} playerId={item.playerId} name={item.playerName} rating={item.ratingAfter} />
@@ -2544,7 +2562,7 @@ function MatchInput({ data, commit, saving }) {
               </div>
             )}
             {shownResultMembers.map(member => (
-              <div key={member.id} className="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm">
+              <div key={member.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-start gap-2 font-black text-slate-900">
@@ -2564,15 +2582,15 @@ function MatchInput({ data, commit, saving }) {
               </div>
             ))}
             {shownResultMembers.length === 0 && (
-              <div className="rounded-3xl border border-red-200 bg-red-50 p-4 text-sm font-black text-red-600">
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-black text-red-600">
                 レート変動データを取得できませんでした。Supabaseから再読み込みしてください。
               </div>
             )}
-            <div className="flex items-center justify-between rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold">
+            <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold">
               <span className="text-slate-600">合計増減</span>
               <ChangeBadge change={shownResultMembers.reduce((sum, member) => sum + member.ratingChange, 0)} />
             </div>
-            <button onClick={startNextMatch} className="min-h-11 w-full rounded-2xl bg-slate-950 p-3 font-black text-white transition hover:bg-blue-950">次の試合を入力する</button>
+            <button onClick={startNextMatch} className="min-h-11 w-full rounded-2xl bg-slate-950 p-3 font-black text-white transition hover:bg-slate-800">次の試合を入力する</button>
           </div>
         )}
       </AppShellCard>
@@ -2586,11 +2604,11 @@ function TeamCard({ title, team, members, updateMember, data, registeredSets, di
   return (
     <div className={classNames(
       "rounded-[1.75rem] border-2 bg-white p-4 shadow-sm transition",
-      active ? "border-blue-500 shadow-blue-100" : "border-blue-100"
+      active ? "border-slate-900 shadow-slate-100" : "border-slate-200"
     )}>
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-xl font-black text-slate-950">{title}</h3>
-        {active && <span className="rounded-full bg-blue-600 px-3 py-1 text-xs font-black text-white">WINNER</span>}
+        {active && <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-black text-white">WINNER</span>}
       </div>
       <div className="space-y-3">
         {members.map((member, index) => {
@@ -2603,8 +2621,8 @@ function TeamCard({ title, team, members, updateMember, data, registeredSets, di
           );
 
           return (
-            <div key={`${team}-${index}`} className="rounded-3xl border border-blue-100 bg-blue-50/60 p-3">
-              <div className="mb-2 text-xs font-black uppercase tracking-wider text-blue-500">Player {index + 1}</div>
+            <div key={`${team}-${index}`} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="mb-2 text-xs font-black uppercase tracking-wider text-slate-500">Player {index + 1}</div>
 
               <div className="grid gap-2 md:grid-cols-2">
                 <label className="space-y-1">
@@ -2620,7 +2638,7 @@ function TeamCard({ title, team, members, updateMember, data, registeredSets, di
                       });
                     }}
                     disabled={disabled}
-                    className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400 disabled:opacity-50"
+                    className="w-full rounded-2xl border border-slate-200 bg-white p-3 font-bold text-slate-800 outline-none focus:border-slate-900 disabled:opacity-50"
                   >
                     {selectablePlayers.map(player => (
                       <option key={player.id} value={player.id}>{player.name}</option>
@@ -2634,7 +2652,7 @@ function TeamCard({ title, team, members, updateMember, data, registeredSets, di
                     value={selectedCharacterName}
                     onChange={e => updateMember(team, index, { characterName: e.target.value })}
                     disabled={disabled || !member.playerId}
-                    className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400 disabled:opacity-50"
+                    className="w-full rounded-2xl border border-slate-200 bg-white p-3 font-bold text-slate-800 outline-none focus:border-slate-900 disabled:opacity-50"
                   >
                     {memberRatings.map(r => (
                       <option key={r.key} value={r.characterName}>{r.characterName}</option>
@@ -2643,7 +2661,7 @@ function TeamCard({ title, team, members, updateMember, data, registeredSets, di
                 </label>
               </div>
 
-              <div className="mt-3 flex items-center justify-between rounded-2xl border border-blue-100 bg-white px-3 py-2">
+              <div className="mt-3 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2">
                 <span className="text-xs font-black text-slate-500">現在レート</span>
                 {currentRating ? (
                   <div className="flex items-center gap-2">
@@ -2663,7 +2681,6 @@ function TeamCard({ title, team, members, updateMember, data, registeredSets, di
 }
 
 function Ranking({ data, ranking, totalRanking }) {
-  const maxRating = Math.max(2500, ...ranking.map(r => r.rating), ...totalRanking.map(r => r.avg));
   const [selectedRatingKey, setSelectedRatingKey] = useState("");
   const [tierAtLeastFilter, setTierAtLeastFilter] = useState("all");
   const [tierExactFilter, setTierExactFilter] = useState("all");
@@ -2680,13 +2697,17 @@ function Ranking({ data, ranking, totalRanking }) {
   return (
     <div className="space-y-5">
       <AppShellCard>
-        <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="flex items-center gap-2 text-blue-600"><Trophy className="h-5 w-5" /><p className="text-sm font-black uppercase tracking-wider">Ranking Board</p></div>
-            <h2 className="mt-1 text-3xl font-black text-slate-950">キャラ別ランキング</h2>
-            <p className="mt-1 text-sm font-medium text-slate-500">
-              プレイヤー名・キャラ名をクリックすると、レート推移グラフを表示します。
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Smash Bros. Ultimate - Player Rankings</div>
+            <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950">キャラ別ランキング</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-500">
+              upsets.gg風に、順位・プレイヤー・キャラ・勝率・ELOを1行で比較できる一覧にしています。
             </p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
+            <div className="text-xs font-black uppercase tracking-widest text-slate-400">Displayed</div>
+            <div className="text-2xl font-black text-slate-950">{filteredRanking.length}</div>
           </div>
         </div>
 
@@ -2700,100 +2721,143 @@ function Ranking({ data, ranking, totalRanking }) {
           </div>
         )}
 
-        <div className="mt-5 rounded-3xl border border-blue-100 bg-blue-50/70 p-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="space-y-2">
-              <span className="text-sm font-black text-slate-600">Tier以上で表示</span>
-              <select value={tierAtLeastFilter} onChange={e => setTierAtLeastFilter(e.target.value)} className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400">
-                {TIER_FILTER_OPTIONS.map(option => (
-                  <option key={option.value} value={option.value}>{option.value === "all" ? "すべて" : `${option.label}以上`}</option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-2">
-              <span className="text-sm font-black text-slate-600">Tierごとに絞る</span>
-              <select value={tierExactFilter} onChange={e => setTierExactFilter(e.target.value)} className="w-full rounded-2xl border border-blue-100 bg-white p-3 font-bold text-slate-800 outline-none focus:border-blue-400">
-                {TIER_FILTER_OPTIONS.map(option => (
-                  <option key={option.value} value={option.value}>{option.value === "all" ? "すべて" : option.label}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="mt-3 text-xs font-bold text-slate-500">表示中：{filteredRanking.length}セット / 全{ranking.length}セット</div>
+        <div className="mt-5 grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
+          <label className="space-y-2">
+            <span className="text-xs font-black uppercase tracking-widest text-slate-500">Tier minimum</span>
+            <select value={tierAtLeastFilter} onChange={e => setTierAtLeastFilter(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white p-3 font-bold text-slate-800 outline-none focus:border-slate-900">
+              {TIER_FILTER_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>{option.value === "all" ? "すべて" : `${option.label}以上`}</option>
+              ))}
+            </select>
+          </label>
+          <label className="space-y-2">
+            <span className="text-xs font-black uppercase tracking-widest text-slate-500">Exact tier</span>
+            <select value={tierExactFilter} onChange={e => setTierExactFilter(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white p-3 font-bold text-slate-800 outline-none focus:border-slate-900">
+              {TIER_FILTER_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>{option.value === "all" ? "すべて" : option.label}</option>
+              ))}
+            </select>
+          </label>
         </div>
 
-        <div className="mt-5 rounded-[1.75rem] border border-blue-100 bg-gradient-to-b from-blue-50 to-white p-4">
-          <div className="space-y-3">
+        <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div className="hidden grid-cols-[70px_1.5fr_1.2fr_110px_110px_110px_90px] items-center border-b border-slate-200 bg-slate-950 px-4 py-3 text-xs font-black uppercase tracking-wider text-white md:grid">
+            <div>#</div>
+            <div>Player</div>
+            <div>Character</div>
+            <div className="text-right">W - L</div>
+            <div className="text-right">WR</div>
+            <div className="text-right">ELO</div>
+            <div className="text-right">Tier</div>
+          </div>
+
+          <div className="divide-y divide-slate-200">
             {filteredRanking.map((r, i) => {
-              const pct = Math.max(6, Math.min(100, (r.rating / maxRating) * 100));
+              const player = data.players.find(p => p.id === r.playerId);
               const isSelected = selectedRatingKey === r.key;
               return (
-                <div key={r.key} className={classNames("rounded-3xl border bg-white p-4 shadow-sm", isSelected ? "border-blue-400 ring-2 ring-blue-100" : "border-blue-100")}>
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-sm font-black text-white">#{i + 1}</div>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedRatingKey(current => current === r.key ? "" : r.key)}
-                        className="min-w-0 rounded-2xl p-1 text-left transition hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                        title="成績グラフを表示"
-                      >
-                        <SetLabel data={data} rating={r} />
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <TierBadge rating={r.rating} large />
-                      <div className={`text-2xl font-black ${getTierTextColor(r.rating)}`}>{r.rating}</div>
-                      <div className="hidden rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600 md:inline-flex">
-                        クリックで詳細
+                <button
+                  key={r.key}
+                  type="button"
+                  onClick={() => setSelectedRatingKey(current => current === r.key ? "" : r.key)}
+                  className={classNames(
+                    "grid w-full gap-3 px-4 py-4 text-left transition md:grid-cols-[70px_1.5fr_1.2fr_110px_110px_110px_90px] md:items-center",
+                    isSelected ? "bg-lime-50 ring-2 ring-inset ring-lime-300" : "bg-white hover:bg-slate-50"
+                  )}
+                  title="成績グラフを表示"
+                >
+                  <div className="flex items-center gap-3 md:block">
+                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-sm font-black text-white">{i + 1}</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-400 md:hidden">Rank</span>
+                  </div>
+                  <div className="min-w-0">
+                    {r.winStreak > 0 && (
+                      <div className="mb-1 inline-flex rounded-md border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-black text-orange-600">
+                        {r.winStreak}連勝中
                       </div>
-                    </div>
+                    )}
+                    <div className="truncate text-base font-black text-slate-950">{player?.name || "不明"}</div>
+                    <div className="mt-0.5 text-xs font-bold text-slate-400 md:hidden">{r.characterName}</div>
                   </div>
-                  <div className="mt-4 h-4 overflow-hidden rounded-full border border-blue-100 bg-slate-100">
-                    <div className={`h-full rounded-full ${getTierBarColor(r.rating)}`} style={{ width: `${pct}%` }} />
+                  <div className="hidden min-w-0 md:block">
+                    <div className="truncate font-black text-slate-800">{r.characterName}</div>
                   </div>
-                </div>
+                  <div className="flex items-center justify-between gap-3 md:block md:text-right">
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-400 md:hidden">W - L</span>
+                    <span className="font-black text-slate-800">{r.wins} - {r.losses}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 md:block md:text-right">
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-400 md:hidden">WR</span>
+                    <span className="font-black text-slate-800">{getWinRateText(r.wins, r.matches)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 md:block md:text-right">
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-400 md:hidden">ELO</span>
+                    <span className="text-2xl font-black text-slate-950">{r.rating}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 md:justify-end">
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-400 md:hidden">Tier</span>
+                    <TierBadge rating={r.rating} />
+                  </div>
+                </button>
               );
             })}
-            {!filteredRanking.length && <div className="rounded-3xl border border-dashed border-blue-200 bg-white p-8 text-center font-bold text-slate-400">条件に合う登録セットがありません。</div>}
+            {!filteredRanking.length && <div className="p-8 text-center font-bold text-slate-400">条件に合う登録セットがありません。</div>}
           </div>
         </div>
       </AppShellCard>
 
       <AppShellCard>
-        <div className="flex items-center gap-2 text-blue-600"><Users className="h-5 w-5" /><h2 className="text-2xl font-black text-slate-950">プレイヤー総合ランキング</h2></div>
-        <p className="mt-1 text-sm font-medium text-slate-500">3キャラ以上登録しているプレイヤーのみ表示。登録キャラすべての平均レートで順位を付けます。</p>
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
-          {totalRanking.map((item, i) => {
-            const pct = Math.max(6, Math.min(100, (item.avg / maxRating) * 100));
-            return (
-              <div key={item.player.id} className="rounded-3xl border border-blue-200 bg-white p-4 shadow-md shadow-blue-100/60">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-black text-blue-500">#{i + 1}</div>
-                    <PlayerIdentity data={data} playerId={item.player.id} name={item.player.name} rating={item.avg} rankFeatured rankPanel nameClassName="text-xl" />
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600">{item.characterCount}キャラ平均</span>
-                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-black text-slate-600">勝率 {getWinRateText(item.wins, item.matches)}</span>
-                    </div>
-                    <div className="mt-2 text-xs font-semibold text-slate-400">{item.sets.map(r => `${r.characterName}:${r.rating}`).join(" / ")}</div>
-                  </div>
-                  <div className="shrink-0 text-right">
-                    <div className={`text-2xl font-black ${getTierTextColor(item.avg)}`}>{item.avg}</div>
-                    <div className="mt-1 text-[11px] font-black uppercase tracking-wider text-slate-400">Player Rate</div>
-                  </div>
+        <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-end md:justify-between">
+          <div>
+            <div className="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Overall standings</div>
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">プレイヤー総合ランキング</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-500">3キャラ以上登録しているプレイヤーのみ表示。登録キャラすべての平均レートで順位を付けます。</p>
+          </div>
+        </div>
+
+        <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          <div className="hidden grid-cols-[70px_1.6fr_120px_120px_130px_120px] items-center border-b border-slate-200 bg-slate-950 px-4 py-3 text-xs font-black uppercase tracking-wider text-white md:grid">
+            <div>#</div>
+            <div>Player</div>
+            <div className="text-right">Sets</div>
+            <div className="text-right">WR</div>
+            <div className="text-right">Player Rate</div>
+            <div className="text-right">Rank</div>
+          </div>
+          <div className="divide-y divide-slate-200">
+            {totalRanking.map((item, i) => (
+              <div key={item.player.id} className="grid gap-3 px-4 py-4 md:grid-cols-[70px_1.6fr_120px_120px_130px_120px] md:items-center">
+                <div>
+                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-sm font-black text-white">{i + 1}</span>
                 </div>
-                <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
-                  <div className={`h-full rounded-full ${getTierBarColor(item.avg)}`} style={{ width: `${pct}%` }} />
+                <div className="min-w-0">
+                  <div className="truncate text-base font-black text-slate-950">{item.player.name}</div>
+                  <div className="mt-1 truncate text-xs font-semibold text-slate-400">{item.sets.map(r => `${r.characterName}:${r.rating}`).join(" / ")}</div>
+                </div>
+                <div className="flex items-center justify-between md:block md:text-right">
+                  <span className="text-xs font-black uppercase tracking-widest text-slate-400 md:hidden">Sets</span>
+                  <span className="font-black text-slate-800">{item.characterCount}</span>
+                </div>
+                <div className="flex items-center justify-between md:block md:text-right">
+                  <span className="text-xs font-black uppercase tracking-widest text-slate-400 md:hidden">WR</span>
+                  <span className="font-black text-slate-800">{getWinRateText(item.wins, item.matches)}</span>
+                </div>
+                <div className="flex items-center justify-between md:block md:text-right">
+                  <span className="text-xs font-black uppercase tracking-widest text-slate-400 md:hidden">Player Rate</span>
+                  <span className="text-2xl font-black text-slate-950">{item.avg}</span>
+                </div>
+                <div className="flex items-center justify-between md:justify-end">
+                  <span className="text-xs font-black uppercase tracking-widest text-slate-400 md:hidden">Rank</span>
+                  <PlayerRankBadge avgRating={item.avg} />
                 </div>
               </div>
-            );
-          })}
-          {!totalRanking.length && (
-            <div className="rounded-3xl border border-dashed border-blue-200 bg-white p-8 text-center font-bold text-slate-400 md:col-span-2">
-              3キャラ以上登録しているプレイヤーがまだいません。
-            </div>
-          )}
+            ))}
+            {!totalRanking.length && (
+              <div className="p-8 text-center font-bold text-slate-400">
+                3キャラ以上登録しているプレイヤーがまだいません。
+              </div>
+            )}
+          </div>
         </div>
       </AppShellCard>
     </div>
@@ -2816,12 +2880,12 @@ function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlaye
       <AppShellCard>
         <h2 className="text-2xl font-black text-slate-950">プレイヤー管理</h2>
         <div className="mt-4 flex gap-2">
-          <input value={newPlayerName} onChange={e => setNewPlayerName(e.target.value)} onKeyDown={e => e.key === "Enter" && addPlayer()} placeholder="プレイヤー名" className="flex-1 rounded-2xl border border-blue-100 bg-blue-50/60 p-3 font-bold outline-none focus:border-blue-400" />
-          <button onClick={addPlayer} disabled={saving} className="min-h-11 rounded-2xl bg-blue-600 px-5 font-black text-white shadow-lg shadow-blue-200 disabled:bg-slate-300">追加</button>
+          <input value={newPlayerName} onChange={e => setNewPlayerName(e.target.value)} onKeyDown={e => e.key === "Enter" && addPlayer()} placeholder="プレイヤー名" className="flex-1 rounded-2xl border border-slate-200 bg-slate-50 p-3 font-bold outline-none focus:border-slate-900" />
+          <button onClick={addPlayer} disabled={saving} className="min-h-11 rounded-2xl bg-slate-950 px-5 font-black text-white shadow-lg shadow-slate-200 disabled:bg-slate-300">追加</button>
         </div>
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           {activePlayers.map(player => (
-            <div key={player.id} className="flex items-center justify-between rounded-3xl border border-blue-100 bg-white p-4 shadow-sm">
+            <div key={player.id} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div>
                 <PlayerIdentity data={data} playerId={player.id} name={player.name} rating={getBestRatingForPlayer(data, player.id)} />
                 <div className="text-xs font-bold text-slate-400">登録済み</div>
@@ -2832,7 +2896,7 @@ function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlaye
         </div>
 
         {deletedPlayers.length > 0 && (
-          <div className="mt-5 rounded-3xl border border-amber-200 bg-amber-50 p-4">
+          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <div className="text-sm font-black text-amber-700">削除済みプレイヤー</div>
             <div className="mt-3 space-y-2">
               {deletedPlayers.map(player => (
@@ -2853,10 +2917,10 @@ function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlaye
         <h2 className="text-2xl font-black text-slate-950">人 × キャラセット登録</h2>
         <p className="mt-1 text-sm font-medium text-slate-500">ここで登録したセットを、試合入力でそのまま選べます。1人{MAX_CHARACTERS_PER_PLAYER}体までです。</p>
         <div className="mt-4 grid gap-2 md:grid-cols-3">
-          <select value={setPlayerId} onChange={e => setSetPlayerId(e.target.value)} className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3 font-bold outline-none focus:border-blue-400">
+          <select value={setPlayerId} onChange={e => setSetPlayerId(e.target.value)} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 font-bold outline-none focus:border-slate-900">
             {activePlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          <select value={setCharacterName} onChange={e => setSetCharacterName(e.target.value)} className="rounded-2xl border border-blue-100 bg-blue-50/60 p-3 font-bold outline-none focus:border-blue-400">
+          <select value={setCharacterName} onChange={e => setSetCharacterName(e.target.value)} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 font-bold outline-none focus:border-slate-900">
             {characters.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
           <button onClick={addCharacterSet} disabled={saving || !activePlayers.length} className="min-h-11 rounded-2xl bg-slate-950 px-5 font-black text-white disabled:bg-slate-300">セット追加</button>
@@ -2864,7 +2928,7 @@ function Players({ data, newPlayerName, setNewPlayerName, addPlayer, deletePlaye
 
         <div className="mt-5 max-h-[520px] space-y-3 overflow-auto pr-1">
           {registeredSets.map(r => (
-            <div key={r.key} className="flex items-center justify-between gap-3 rounded-3xl border border-blue-100 bg-white p-4 shadow-sm">
+            <div key={r.key} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="min-w-0">
                 <div className="flex min-w-0 items-start gap-2 font-black text-slate-950"><PlayerIdentity data={data} playerId={r.playerId} name={data.players.find(p => p.id === r.playerId)?.name || "不明"} rating={r.rating} /> <span className="pt-1">/ {r.characterName}</span></div>
                 <div className="mt-1 text-xs font-bold text-slate-400">Rate {r.rating} / {r.wins}-{r.losses} / {r.matches} matches</div>
@@ -2910,7 +2974,7 @@ function HistoryView({ data, deleteMatchOnly, saving }) {
           const giantKilling = getGiantKillingFromMatch(match);
 
           return (
-            <div key={match.id} className="rounded-3xl border border-blue-100 bg-white p-4 shadow-sm">
+            <div key={match.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                 <div>
                   <div className="font-black text-slate-950">{getRandomMatchLabel(match) ? `${getRandomMatchLabel(match)} / ` : ""}{getMatchRuleLabel(inferRuleFromMatch(match))} / {match.mode} / Team {match.winnerTeam} 勝利 / {match.scoreA}-{match.scoreB}</div>
@@ -2923,7 +2987,7 @@ function HistoryView({ data, deleteMatchOnly, saving }) {
                     )}
                     {giantKilling && (
                       <div className="inline-flex rounded-full border border-yellow-300 bg-yellow-50 px-3 py-1 text-xs font-black text-yellow-800">
-                        ⚔️ ジャイアントキリング！ レート差{giantKilling.ratingDiff} / 補正{giantKilling.bonus}
+                        ⚔️ ジャイアントキリング！ レート差{giantKilling.ratingDiff} / 勝者+{giantKilling.bonus} / 敗者-{giantKilling.loserPenalty}
                       </div>
                     )}
                   </div>
@@ -2934,7 +2998,7 @@ function HistoryView({ data, deleteMatchOnly, saving }) {
               </div>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 {match.members.map(m => (
-                  <div key={m.id} className="flex justify-between rounded-2xl border border-blue-100 bg-blue-50/60 p-3">
+                  <div key={m.id} className="flex justify-between rounded-2xl border border-slate-200 bg-slate-50 p-3">
                     <div className="flex flex-wrap items-start gap-2 font-bold text-slate-700">
                       <PlayerName data={data} id={m.playerId} />
                       <span className="pt-1">/ {m.characterName}</span>
@@ -2989,11 +3053,11 @@ function Stats({ data, ranking, totalRanking = [], refreshData, saving }) {
         "勝利：レートプラス",
         "敗北：必ずマイナス",
         "2-0勝利：2勝制のみ変動1.1倍",
-        "連勝ボーナス：本来もらえるレートに連勝数に応じた補正を加算。加算上限は10連勝まで。",
-        "ガチマッチ：1on1で両者1700超えなら変動が少し大きくなります。",
+        "連勝ボーナス：本来もらえるレートに連勝数×0.1倍を加算。加算上限は1.0倍",
+        "ガチマッチ：1on1で両者1700超えなら変動1.2倍",
         "変動上限：個人戦±100、チーム戦±50。ただしジャイアントキリング補正は上限突破",
         "連敗補正：連勝ボーナスを除いたレート増減の和が最低+5になる範囲で適用",
-        "ジャイアントキリング：1on1でレート差200以上の低レート側勝利時、レート変動が激しくなる。"
+        "ジャイアントキリング：1on1でレート差200以上の低レート側勝利時、勝者の補正はそのまま、敗者のマイナス補正は0.75倍になる。"
       ]
     },
     {
@@ -3004,10 +3068,10 @@ function Stats({ data, ranking, totalRanking = [], refreshData, saving }) {
         "ランダムマッチ：Tier選択→セット複数選択→1on1を自動作成。両者1700超えならランダムガチマッチ表示になります",
         "ランキング：プレイヤー名・キャラ名クリックでレート推移グラフ表示",
         "プレイヤー総合：3キャラ以上登録しているプレイヤーのみ表示。",
-        "ランク：Grand Master 1900+ / Master 1850+ / Diamond 1800+ / Ruby 1750+ / Sapphire 1700+ / Platinum 1650+ / Gold 1600+ / Silver 1500+ / Bronze 1450+ / Iron 1450未満",
+        "ランク：Grand Master 2000+ / Master 1900+ / Emerald 1850+ / Diamond 1800+ / Ruby 1750+ / Sapphire 1700+ / Platinum 1650+ / Gold 1600+ / Silver 1500+ / Bronze 1450+ / Iron 1450未満",
         "ランク初到達報酬：Grand Master 7000円 / Master 5000円 / Diamond 3000円 / Ruby 2000円 / Sapphire 1000円 / Platinum 777円",
         "ティア：SSS 2200+ / SS 2000+ / S 1800+ / A 1600+ / B 1400+ / C 1200+ / D 1001-1199 / E 1000以下",
-        "ティア初到達報酬：SSS 3000円 / SS 1000円 / S 500円",
+        "ティア初到達報酬：SSS 3000円 / SS 1000円 / S 500円"
       ]
     }
   ];
@@ -3025,22 +3089,22 @@ function Stats({ data, ranking, totalRanking = [], refreshData, saving }) {
             <h2 className="text-2xl font-black text-slate-950">概要</h2>
             <p className="mt-1 text-sm font-semibold text-slate-600">よく見る数値を上に置き、細かい仕様はカテゴリごとに折りたたみました。</p>
           </div>
-          <button onClick={refreshData} disabled={saving} className="min-h-11 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-black text-blue-700 hover:bg-blue-100 disabled:opacity-40">Supabaseから再読み込み</button>
+          <button onClick={refreshData} disabled={saving} className="min-h-11 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-black text-slate-700 hover:bg-blue-100 disabled:opacity-40">Supabaseから再読み込み</button>
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-3">
-          <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4">
-            <div className="text-xs font-black uppercase tracking-wider text-blue-500">Top Character</div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs font-black uppercase tracking-wider text-slate-500">Top Character</div>
             <div className="mt-2 text-xl font-black text-slate-950">{top ? top.characterName : "未登録"}</div>
             <div className="mt-1 text-sm font-bold text-slate-600">{top ? `${top.rating} / ${getTier(top.rating)}` : "データなし"}</div>
           </div>
-          <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4">
-            <div className="text-xs font-black uppercase tracking-wider text-blue-500">Player Ranking</div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs font-black uppercase tracking-wider text-slate-500">Player Ranking</div>
             <div className="mt-2 text-xl font-black text-slate-950">{totalRanking.length}人</div>
             <div className="mt-1 text-sm font-bold text-slate-600">3キャラ以上登録済みの総合ランキング対象</div>
           </div>
-          <div className="rounded-3xl border border-blue-100 bg-blue-50/70 p-4">
-            <div className="text-xs font-black uppercase tracking-wider text-blue-500">Average Matches</div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="text-xs font-black uppercase tracking-wider text-slate-500">Average Matches</div>
             <div className="mt-2 text-xl font-black text-slate-950">{activeCharacters ? (data.ratings.reduce((sum, rating) => sum + rating.matches, 0) / activeCharacters).toFixed(1) : "0.0"}</div>
             <div className="mt-1 text-sm font-bold text-slate-600">登録キャラ1体あたりの平均試合数</div>
           </div>
@@ -3053,14 +3117,14 @@ function Stats({ data, ranking, totalRanking = [], refreshData, saving }) {
           {specGroups.map(group => {
             const open = openSpecGroup === group.id;
             return (
-              <div key={group.id} className="rounded-3xl border border-blue-100 bg-blue-50/60 p-3">
+              <div key={group.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                 <button
                   type="button"
                   onClick={() => setOpenSpecGroup(current => current === group.id ? "" : group.id)}
-                  className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 text-left font-black text-slate-800 transition hover:bg-blue-50"
+                  className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 text-left font-black text-slate-800 transition hover:bg-slate-50"
                 >
                   {group.title}
-                  <ChevronRight className={classNames("h-5 w-5 shrink-0 text-blue-500 transition", open ? "rotate-90" : "")} />
+                  <ChevronRight className={classNames("h-5 w-5 shrink-0 text-slate-500 transition", open ? "rotate-90" : "")} />
                 </button>
                 <AnimatePresence initial={false}>
                   {open && (
@@ -3088,13 +3152,13 @@ function Stats({ data, ranking, totalRanking = [], refreshData, saving }) {
 
 function StatCard({ label, value }) {
   return (
-    <div className="rounded-3xl border border-blue-200/80 bg-white/95 p-5 shadow-xl shadow-blue-950/20 backdrop-blur">
-      <div className="text-sm font-black uppercase tracking-wider text-blue-600">{label}</div>
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xl shadow-blue-950/20 backdrop-blur">
+      <div className="text-sm font-black uppercase tracking-wider text-slate-950">{label}</div>
       <div className="mt-2 text-4xl font-black text-slate-950">{value}</div>
     </div>
   );
 }
 
 function Spec({ text }) {
-  return <div className="flex items-center gap-2 rounded-2xl border border-blue-100 bg-blue-50/70 p-3"><ChevronRight className="h-4 w-4 shrink-0 text-blue-500" />{text}</div>;
+  return <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3"><ChevronRight className="h-4 w-4 shrink-0 text-slate-500" />{text}</div>;
 }
