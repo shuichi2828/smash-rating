@@ -3069,7 +3069,7 @@ function Stats({ data, ranking, totalRanking = [], refreshData, saving }) {
         "ランキング：プレイヤー名・キャラ名クリックでレート推移グラフ表示",
         "プレイヤー総合：3キャラ以上登録しているプレイヤーのみ表示。",
         "ランク：Grand Master 2000+ / Master 1900+ / Emerald 1850+ / Diamond 1800+ / Ruby 1750+ / Sapphire 1700+ / Platinum 1650+ / Gold 1600+ / Silver 1500+ / Bronze 1450+ / Iron 1450未満",
-        "ランク初到達報酬：Grand Master 7000円 / Master 5000円 / Diamond 3000円 / Ruby 2000円 / Sapphire 1000円 / Platinum 777円",
+        "ランク初到達報酬：Grand Master 7000円 / Master 5000円 / Emerald 4000円 /Diamond 3000円 / Ruby 2000円 / Sapphire 1000円 / Platinum 777円",
         "ティア：SSS 2200+ / SS 2000+ / S 1800+ / A 1600+ / B 1400+ / C 1200+ / D 1001-1199 / E 1000以下",
         "ティア初到達報酬：SSS 3000円 / SS 1000円 / S 500円"
       ]
