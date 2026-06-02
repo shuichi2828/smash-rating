@@ -553,7 +553,7 @@ function getWinRateText(wins, matches) {
 }
 
 function getPlayerRank(avgRating) {
-  if (avgRating >= 2100) return "KING";
+  if (avgRating >= 2100) return "Grand Master2";
   if (avgRating >= 2000) return "Grand Master";
   if (avgRating >= 1900) return "Master";
   if (avgRating >= 1850) return "Emerald";
@@ -596,7 +596,7 @@ function hasEnoughSetsForPlayerRank(ratings, playerId) {
 function getPlayerRankStyle(avgRating) {
   const rank = getPlayerRank(avgRating);
   const styles = {
-    KING: "border-yellow-400 bg-gradient-to-r from-black via-yellow-950 to-black text-yellow-300 shadow-yellow-300",
+    "Grand Master2": "border-yellow-400 bg-gradient-to-r from-black via-yellow-950 to-black text-yellow-300 shadow-yellow-300",
     "Grand Master": "border-fuchsia-500 bg-gradient-to-r from-black via-fuchsia-950 to-blue-950 text-fuchsia-300 shadow-fuchsia-200",
     Master: "border-red-950 bg-black text-red-500 shadow-red-200",
     Emerald: "border-emerald-400 bg-emerald-50 text-emerald-700 shadow-emerald-100",
@@ -615,7 +615,7 @@ function getPlayerRankStyle(avgRating) {
 function getPlayerRankPanelStyle(avgRating) {
   const rank = getPlayerRank(avgRating);
   const styles = {
-    KING: "border-yellow-400 bg-gradient-to-r from-black via-yellow-950 to-black text-yellow-300 shadow-yellow-300/80",
+    "Grand Master2": "border-yellow-400 bg-gradient-to-r from-black via-yellow-950 to-black text-yellow-300 shadow-yellow-300/80",
     "Grand Master": "border-fuchsia-500 bg-gradient-to-r from-black via-fuchsia-950 to-blue-950 text-fuchsia-300 shadow-fuchsia-200/80",
     Master: "border-red-950 bg-black text-red-500 shadow-red-200/80",
     Emerald: "border-emerald-400 bg-emerald-50 text-emerald-700 shadow-emerald-100/80",
