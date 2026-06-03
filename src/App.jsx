@@ -18,6 +18,7 @@ const MAX_CHARACTERS_PER_PLAYER = 5;
 const DAILY_SINGLE_LIMIT = 30;
 const DAILY_BO3_LIMIT = 15;
 const MIN_TOTAL_CHANGE = 5;
+const MAX_TOTAL_CHANGE_BEFORE_GIANT_KILLING = 20;
 const RATE_INTENSITY_MULTIPLIER = 2.1;
 const RATE_GLOBAL_MULTIPLIER = 1.2;
 const WIN_BONUS = 10;
@@ -451,7 +452,6 @@ function getK(matches) {
 }
 
 function getTier(rating) {
-  if (rating >= 2400) return "X";
   if (rating >= 2200) return "SSS";
   if (rating >= 2000) return "SS";
   if (rating >= 1800) return "S";
@@ -502,7 +502,6 @@ function getTierMilestones(rating) {
 function getTierStyle(rating) {
   const tier = getTier(rating);
   const styles = {
-    X: "text-yellow-300 bg-black border-yellow-400 shadow-yellow-300",
     SSS: "text-red-600 bg-black border-red-500",
     SS: "text-red-600 bg-red-50 border-red-200",
     S: "text-pink-600 bg-pink-50 border-pink-200",
@@ -518,7 +517,6 @@ function getTierStyle(rating) {
 function getTierTextColor(rating) {
   const tier = getTier(rating);
   const styles = {
-    X: "text-yellow-400 drop-shadow-[0_1px_1px_rgba(0,0,0,1)]",
     SSS: "text-red-700 drop-shadow-[0_1px_1px_rgba(0,0,0,0.95)]",
     SS: "text-red-600",
     S: "text-pink-600",
@@ -534,7 +532,6 @@ function getTierTextColor(rating) {
 function getTierBarColor(rating) {
   const tier = getTier(rating);
   const styles = {
-    X: "bg-gradient-to-r from-black via-yellow-400 to-black",
     SSS: "bg-gradient-to-r from-black via-red-700 to-black",
     SS: "bg-red-500",
     S: "bg-pink-500",
@@ -553,7 +550,6 @@ function getWinRateText(wins, matches) {
 }
 
 function getPlayerRank(avgRating) {
-  if (avgRating >= 2100) return "Grand Master2";
   if (avgRating >= 2000) return "Grand Master";
   if (avgRating >= 1900) return "Master";
   if (avgRating >= 1850) return "Emerald";
@@ -596,7 +592,6 @@ function hasEnoughSetsForPlayerRank(ratings, playerId) {
 function getPlayerRankStyle(avgRating) {
   const rank = getPlayerRank(avgRating);
   const styles = {
-    "Grand Master2": "border-yellow-400 bg-gradient-to-r from-black via-yellow-950 to-black text-yellow-300 shadow-yellow-300",
     "Grand Master": "border-fuchsia-500 bg-gradient-to-r from-black via-fuchsia-950 to-blue-950 text-fuchsia-300 shadow-fuchsia-200",
     Master: "border-red-950 bg-black text-red-500 shadow-red-200",
     Emerald: "border-emerald-400 bg-emerald-50 text-emerald-700 shadow-emerald-100",
@@ -615,7 +610,6 @@ function getPlayerRankStyle(avgRating) {
 function getPlayerRankPanelStyle(avgRating) {
   const rank = getPlayerRank(avgRating);
   const styles = {
-    "Grand Master2": "border-yellow-400 bg-gradient-to-r from-black via-yellow-950 to-black text-yellow-300 shadow-yellow-300/80",
     "Grand Master": "border-fuchsia-500 bg-gradient-to-r from-black via-fuchsia-950 to-blue-950 text-fuchsia-300 shadow-fuchsia-200/80",
     Master: "border-red-950 bg-black text-red-500 shadow-red-200/80",
     Emerald: "border-emerald-400 bg-emerald-50 text-emerald-700 shadow-emerald-100/80",
@@ -665,16 +659,6 @@ function getPlayerAverageRating(data, playerId) {
 
 function NameTag({ name, rating }) {
   const tier = getTier(rating);
-
-  if (tier === "X") {
-    return (
-      <span className="inline-flex items-center rounded-xl border border-yellow-400 bg-gradient-to-r from-black via-zinc-950 to-black px-3 py-1.5 shadow-md shadow-yellow-300">
-        <span className="font-black tracking-wider italic text-yellow-300 drop-shadow-[0_1px_1px_rgba(0,0,0,1)]">
-          {name}
-        </span>
-      </span>
-    );
-  }
 
   if (tier === "SSS") {
     return (
@@ -1330,6 +1314,36 @@ function calculateMatch({ data, mode, rule = "single", teamA, teamB, winnerTeam,
 
       if (!changed) break;
       guard += 1;
+    }
+  }
+
+
+  let totalChangeBeforeGiantKilling = rawMembers.reduce((sum, member) => sum + member.ratingChange, 0);
+
+  if (totalChangeBeforeGiantKilling > MAX_TOTAL_CHANGE_BEFORE_GIANT_KILLING) {
+    let excess = totalChangeBeforeGiantKilling - MAX_TOTAL_CHANGE_BEFORE_GIANT_KILLING;
+    const winners = rawMembers
+      .filter(member => member.won)
+      .sort((a, b) => b.ratingChange - a.ratingChange);
+
+    for (const winner of winners) {
+      if (excess <= 0) break;
+      const reducibleStreakBonus = Math.min(excess, winner.streakBonusChange || 0);
+      if (reducibleStreakBonus <= 0) continue;
+
+      winner.ratingChange -= reducibleStreakBonus;
+      winner.streakBonusChange -= reducibleStreakBonus;
+      excess -= reducibleStreakBonus;
+    }
+
+    for (const winner of winners) {
+      if (excess <= 0) break;
+      const reducibleBase = Math.min(excess, Math.max(0, winner.baseRatingChange - 1));
+      if (reducibleBase <= 0) continue;
+
+      winner.ratingChange -= reducibleBase;
+      winner.baseRatingChange -= reducibleBase;
+      excess -= reducibleBase;
     }
   }
 
